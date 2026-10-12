@@ -218,7 +218,7 @@ const CHECKS: Record<UnlockService, (a: ProxyAgent) => Promise<Result>> = {
   async claude(a) {
     const [r, t] = await Promise.all([
       get(a, 'https://claude.ai/'),
-      trace(a, 'claude.ai').catch(() => trace(a, 'www.cloudflare.com')).catch(() => ({ loc: undefined })),
+      trace(a, 'claude.ai').catch(() => ({ loc: undefined })),
     ])
     return judgeClaude(r, t.loc)
   },
@@ -244,24 +244,17 @@ const CHECKS: Record<UnlockService, (a: ProxyAgent) => Promise<Result>> = {
   },
 }
 
-/** Anthropic 官方支持的国家和地区（https://www.anthropic.com/supported-countries，Claude.ai 与 API 共用） */
-const CLAUDE_SUPPORTED = new Set(
-  'AD AE AG AL AM AO AR AT AU AZ BA BB BD BE BF BG BH BI BJ BN BO BR BS BT BW BZ CA CD CF CG CH CI CL CM CO CR CV CY CZ DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FM FR GA GB GD GE GH GM GN GQ GR GT GW GY HN HR HT HU ID IE IL IN IQ IS IT JM JO JP KE KG KH KI KM KN KR KW KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MG MH MK ML MN MR MT MU MV MW MX MY MZ NA NE NG NI NL NO NP NR NZ OM PA PE PG PH PK PL PS PT PW PY QA RO RS RW SA SB SC SD SE SG SI SK SL SM SN SO SR SS ST SV SZ TD TG TH TJ TL TM TN TO TR TT TV TW TZ UA UG US UY UZ VA VC VN VU WS ZA ZM ZW'.split(' '),
-)
-
 /**
- * claude.ai 的地区限制和人机验证都由 Cloudflare 执行：
- * - 跳转到 app-unavailable-in-region → 不可用
- * - 正常打开 → 可用
- * - 被 Cloudflare 人机验证（CF 盾）拦下时看不到真实页面，改用 Cloudflare 识别的出口地区对照官方支持列表
+ * claude.ai 对不支持的地区会跳转到 anthropic.com/app-unavailable-in-region，只以这个跳转为准：
+ * 它反映的是 claude.ai 实际看到的出口（包括 DNS 解锁），不按 IP 归属地猜。
+ * Cloudflare 的跳转规则在人机验证（CF 盾）之前执行，所以被验证页拦下但没有跳转，同样说明地区可用。
  */
 export function judgeClaude(r: { status: number; url: string; text: string; headers?: Record<string, string> }, loc?: string): Result {
   if (/unavailable-in-region/i.test(r.url)) return { status: 'no', region: loc }
+  if (r.status < 400) return { status: 'yes', region: loc }
   const challenged = r.headers?.['cf-mitigated'] === 'challenge' || /challenge-platform|cf_chl_|<title>Just a moment/i.test(r.text.slice(0, 50_000))
-  if (!challenged && r.status < 400) return { status: 'yes', region: loc }
-  const why = challenged ? '页面被 Cloudflare 人机验证拦下' : `HTTP ${r.status}`
-  if (loc) return CLAUDE_SUPPORTED.has(loc) ? { status: 'yes', region: loc, note: `${why}，按出口地区判断` } : { status: 'no', region: loc, note: `${why}，按出口地区判断` }
-  return { status: challenged ? 'unknown' : 'error', note: why }
+  if (challenged) return { status: 'yes', region: loc, note: '遇到 Cloudflare 人机验证，但没有跳转到地区不可用页' }
+  return { status: 'error', note: `HTTP ${r.status}` }
 }
 
 /** Gemini 不提供服务的地区（Google 识别出的 ISO 3166 三位代码），其余地区均可用 */

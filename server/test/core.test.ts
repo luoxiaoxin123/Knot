@@ -303,13 +303,10 @@ describe('claude unlock judge', async () => {
   it('normal page means available', () => {
     expect(judgeClaude({ status: 200, url: 'https://claude.ai/login', text: '<html>app</html>' }, 'JP')).toEqual({ status: 'yes', region: 'JP' })
   })
-  it('falls back to the Cloudflare region behind a challenge', () => {
-    expect(judgeClaude(challenge, 'US')).toMatchObject({ status: 'yes', region: 'US' })
-    expect(judgeClaude(challenge, 'TW')).toMatchObject({ status: 'yes', region: 'TW' })
-    expect(judgeClaude(challenge, 'HK')).toMatchObject({ status: 'no', region: 'HK' })
-    expect(judgeClaude(challenge, 'CN')).toMatchObject({ status: 'no' })
-    expect(judgeClaude(challenge).status).toBe('unknown')
-    // 没有 cf-mitigated 头也能从页面认出验证页
-    expect(judgeClaude({ ...challenge, headers: {} }, 'SG')).toMatchObject({ status: 'yes', note: expect.stringContaining('Cloudflare') })
+  it('a challenge without the region redirect still means available', () => {
+    // 地区判断只看跳转，与出口 IP 归属地无关（DNS 解锁时归属地可能是不支持的地区）
+    expect(judgeClaude(challenge, 'HK')).toMatchObject({ status: 'yes', note: expect.stringContaining('Cloudflare') })
+    expect(judgeClaude({ ...challenge, headers: {} })).toMatchObject({ status: 'yes' })
+    expect(judgeClaude({ status: 502, url: 'https://claude.ai/', text: 'bad gateway' })).toEqual({ status: 'error', note: 'HTTP 502' })
   })
 })
