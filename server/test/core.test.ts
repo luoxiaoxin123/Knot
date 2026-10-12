@@ -274,3 +274,42 @@ describe('extended rule types', () => {
     expect(stash.warnings.join()).toMatch('Stash 不支持')
   })
 })
+
+describe('gemini unlock judge', async () => {
+  const { judgeGemini } = await import('../src/services/core.ts')
+  const page = (body: string, url = 'https://gemini.google.com/app') => ({ status: 200, url, text: `<html>${body}</html>` })
+  it('decides by the region Google detects when the marker is missing', () => {
+    expect(judgeGemini(page('x,2,1,200,"JPN"y'))).toEqual({ status: 'yes', region: 'JPN' })
+    expect(judgeGemini(page('x,2,1,200,"HKG"y'))).toEqual({ status: 'no', region: 'HKG' })
+  })
+  it('trusts the availability marker', () => {
+    expect(judgeGemini(page('45631641,null,true ,2,1,200,"USA"'))).toEqual({ status: 'yes', region: 'USA' })
+    expect(judgeGemini(page('45631641,null,true'))).toEqual({ status: 'yes', region: undefined })
+  })
+  it('never reports blocked without evidence', () => {
+    expect(judgeGemini(page('nothing here')).status).toBe('unknown')
+    expect(judgeGemini({ status: 200, url: 'https://consent.google.com/ml?continue=x', text: '' }).status).toBe('unknown')
+    expect(judgeGemini({ status: 429, url: 'https://www.google.com/sorry/index?continue=x', text: '' }).status).toBe('error')
+    expect(judgeGemini({ status: 503, url: 'https://gemini.google.com/', text: '' })).toEqual({ status: 'error', note: 'HTTP 503' })
+  })
+})
+
+describe('claude unlock judge', async () => {
+  const { judgeClaude } = await import('../src/services/core.ts')
+  const challenge = { status: 403, url: 'https://claude.ai/', text: '<html><head><title>Just a moment...</title></head></html>', headers: { 'cf-mitigated': 'challenge' } }
+  it('uses the redirect when the region is blocked', () => {
+    expect(judgeClaude({ status: 200, url: 'https://www.anthropic.com/app-unavailable-in-region', text: '' }, 'HK')).toEqual({ status: 'no', region: 'HK' })
+  })
+  it('normal page means available', () => {
+    expect(judgeClaude({ status: 200, url: 'https://claude.ai/login', text: '<html>app</html>' }, 'JP')).toEqual({ status: 'yes', region: 'JP' })
+  })
+  it('falls back to the Cloudflare region behind a challenge', () => {
+    expect(judgeClaude(challenge, 'US')).toMatchObject({ status: 'yes', region: 'US' })
+    expect(judgeClaude(challenge, 'TW')).toMatchObject({ status: 'yes', region: 'TW' })
+    expect(judgeClaude(challenge, 'HK')).toMatchObject({ status: 'no', region: 'HK' })
+    expect(judgeClaude(challenge, 'CN')).toMatchObject({ status: 'no' })
+    expect(judgeClaude(challenge).status).toBe('unknown')
+    // 没有 cf-mitigated 头也能从页面认出验证页
+    expect(judgeClaude({ ...challenge, headers: {} }, 'SG')).toMatchObject({ status: 'yes', note: expect.stringContaining('Cloudflare') })
+  })
+})

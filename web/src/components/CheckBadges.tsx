@@ -14,6 +14,7 @@ const STATUS = {
   yes: { cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300', text: '可用' },
   partial: { cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300', text: '部分可用' },
   no: { cls: 'bg-red-50 text-red-600 line-through dark:bg-red-950/50 dark:text-red-300', text: '不可用' },
+  unknown: { cls: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800', text: '无法判断' },
   error: { cls: 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800', text: '检测失败' },
 }
 

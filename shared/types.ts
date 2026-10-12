@@ -50,7 +50,8 @@ export interface Node {
   check?: NodeCheck
 }
 
-export type UnlockStatus = 'yes' | 'no' | 'partial' | 'error'
+/** unknown：请求成功但无法从页面判断 */
+export type UnlockStatus = 'yes' | 'no' | 'partial' | 'unknown' | 'error'
 
 export interface NodeCheck {
   at: number

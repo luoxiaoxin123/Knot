@@ -183,7 +183,7 @@ async function get(agent: ProxyAgent, url: string, headers: Record<string, strin
     signal: AbortSignal.timeout(12_000),
   })
   const text = await res.text()
-  return { status: res.status, url: res.url, text }
+  return { status: res.status, url: res.url, text, headers: Object.fromEntries(res.headers) as Record<string, string> }
 }
 
 async function safe(fn: () => Promise<Result>): Promise<Result> {
@@ -216,17 +216,14 @@ const CHECKS: Record<UnlockService, (a: ProxyAgent) => Promise<Result>> = {
     return { status: 'yes', region: t.loc }
   },
   async claude(a) {
-    const r = await get(a, 'https://claude.ai/login')
-    if (/app-unavailable-in-region|unavailable-in-region/i.test(r.url + r.text.slice(0, 5000))) return { status: 'no' }
-    if (r.status === 403) return { status: 'error', note: '被 Cloudflare 拦截' }
-    const t = await trace(a, 'claude.ai').catch(() => ({ loc: undefined }))
-    return { status: r.status < 400 ? 'yes' : 'error', region: t.loc, note: r.status >= 400 ? `HTTP ${r.status}` : undefined }
+    const [r, t] = await Promise.all([
+      get(a, 'https://claude.ai/'),
+      trace(a, 'claude.ai').catch(() => trace(a, 'www.cloudflare.com')).catch(() => ({ loc: undefined })),
+    ])
+    return judgeClaude(r, t.loc)
   },
   async gemini(a) {
-    const r = await get(a, 'https://gemini.google.com/')
-    const region = r.text.match(/,2,1,200,"([A-Z]{3})"/)?.[1]
-    if (r.text.includes('45631641,null,true')) return { status: 'yes', region }
-    return { status: 'no', region }
+    return judgeGemini(await get(a, 'https://gemini.google.com/'))
   },
   async netflix(a) {
     // 81280792: Netflix 自制剧；70143836: 非自制（绝命毒师）
@@ -245,6 +242,53 @@ const CHECKS: Record<UnlockService, (a: ProxyAgent) => Promise<Result>> = {
     if (r.status !== 200) return { status: 'error', note: `HTTP ${r.status}` }
     return { status: 'yes', region }
   },
+}
+
+/** Anthropic 官方支持的国家和地区（https://www.anthropic.com/supported-countries，Claude.ai 与 API 共用） */
+const CLAUDE_SUPPORTED = new Set(
+  'AD AE AG AL AM AO AR AT AU AZ BA BB BD BE BF BG BH BI BJ BN BO BR BS BT BW BZ CA CD CF CG CH CI CL CM CO CR CV CY CZ DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FM FR GA GB GD GE GH GM GN GQ GR GT GW GY HN HR HT HU ID IE IL IN IQ IS IT JM JO JP KE KG KH KI KM KN KR KW KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MG MH MK ML MN MR MT MU MV MW MX MY MZ NA NE NG NI NL NO NP NR NZ OM PA PE PG PH PK PL PS PT PW PY QA RO RS RW SA SB SC SD SE SG SI SK SL SM SN SO SR SS ST SV SZ TD TG TH TJ TL TM TN TO TR TT TV TW TZ UA UG US UY UZ VA VC VN VU WS ZA ZM ZW'.split(' '),
+)
+
+/**
+ * claude.ai 的地区限制和人机验证都由 Cloudflare 执行：
+ * - 跳转到 app-unavailable-in-region → 不可用
+ * - 正常打开 → 可用
+ * - 被 Cloudflare 人机验证（CF 盾）拦下时看不到真实页面，改用 Cloudflare 识别的出口地区对照官方支持列表
+ */
+export function judgeClaude(r: { status: number; url: string; text: string; headers?: Record<string, string> }, loc?: string): Result {
+  if (/unavailable-in-region/i.test(r.url)) return { status: 'no', region: loc }
+  const challenged = r.headers?.['cf-mitigated'] === 'challenge' || /challenge-platform|cf_chl_|<title>Just a moment/i.test(r.text.slice(0, 50_000))
+  if (!challenged && r.status < 400) return { status: 'yes', region: loc }
+  const why = challenged ? '页面被 Cloudflare 人机验证拦下' : `HTTP ${r.status}`
+  if (loc) return CLAUDE_SUPPORTED.has(loc) ? { status: 'yes', region: loc, note: `${why}，按出口地区判断` } : { status: 'no', region: loc, note: `${why}，按出口地区判断` }
+  return { status: challenged ? 'unknown' : 'error', note: why }
+}
+
+/** Gemini 不提供服务的地区（Google 识别出的 ISO 3166 三位代码），其余地区均可用 */
+const GEMINI_UNSUPPORTED = new Set(['CHN', 'HKG', 'MAC', 'RUS', 'BLR', 'CUB', 'IRN', 'PRK', 'SYR'])
+
+/**
+ * 根据 gemini.google.com 首页判断：
+ * 1. `45631641,null,true` 是可用时才出现的特性标记（社区脚本通用做法），出现即可用；
+ * 2. 没有标记时，看页面里 Google 对该 IP 的地区判定 `,2,1,200,"JPN"`，对照不可用地区表；
+ * 3. 两者都找不到时如实返回「无法判断」，不再当成不可用。
+ */
+export function judgeGemini(r: { status: number; url: string; text: string }): Result {
+  const host = (() => {
+    try {
+      return new URL(r.url).hostname
+    } catch {
+      return ''
+    }
+  })()
+  if (r.status === 429 || /google\.[a-z.]+\/sorry\//.test(r.url)) return { status: 'error', note: '该 IP 被 Google 要求人机验证' }
+  if (host === 'consent.google.com') return { status: 'unknown', note: 'Google 要求先同意 Cookie，无法判断' }
+  if (r.status >= 400) return { status: 'error', note: `HTTP ${r.status}` }
+  const region = r.text.match(/,2,1,200,"([A-Z]{3})"/)?.[1]
+  const flag = r.text.includes('45631641,null,true')
+  if (flag) return { status: 'yes', region }
+  if (region) return GEMINI_UNSUPPORTED.has(region) ? { status: 'no', region } : { status: 'yes', region }
+  return { status: 'unknown', note: `页面里没有地区信息（${host || r.url}，${r.text.length} 字节），Google 可能改了页面` }
 }
 
 async function detect(agent: ProxyAgent): Promise<Partial<NodeCheck>> {
