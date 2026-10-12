@@ -1,8 +1,28 @@
 // 自定义规则 <-> YAML 互转（前端 YAML 编辑模式使用）
 import YAML from 'yaml'
-import { RULE_TYPES, type CustomRule, type RuleType } from './types.ts'
+import { NO_RESOLVE_TYPES, RULE_TYPES, type CustomRule, type RuleType } from './types.ts'
 
-const NO_RESOLVE_TYPES = new Set(['IP-CIDR', 'IP-CIDR6', 'SRC-IP-CIDR', 'IP-ASN', 'GEOIP', 'RULE-SET'])
+/**
+ * 按逗号拆分一行规则。逻辑规则（AND / OR / NOT）的内容带括号和逗号，
+ * 如 `AND,((DOMAIN,a.com),(NETWORK,UDP)),DIRECT`，括号部分整体作为第二段。
+ */
+export function splitRuleLine(s: string): string[] {
+  const i = s.indexOf(',')
+  if (i < 0) return [s.trim()]
+  const type = s.slice(0, i).trim()
+  const rest = s.slice(i + 1).trim()
+  if (rest.startsWith('(')) {
+    let depth = 0
+    for (let j = 0; j < rest.length; j++) {
+      if (rest[j] === '(') depth++
+      else if (rest[j] === ')' && --depth === 0) {
+        const tail = rest.slice(j + 1).trim()
+        return [type, rest.slice(0, j + 1), ...(tail ? tail.replace(/^,/, '').split(',').map((x) => x.trim()) : [])]
+      }
+    }
+  }
+  return [type, ...rest.split(',').map((x) => x.trim())]
+}
 
 export interface RuleLine {
   type: RuleType
@@ -36,7 +56,7 @@ export function parseRuleLines(text: string, defaultPolicy = ''): { rules: RuleL
       .replace(/^(['"])(.*)\1$/, '$2')
       .trim()
     if (!s || s.startsWith('#') || s.startsWith('//')) continue
-    const parts = s.split(',').map((x) => x.trim())
+    const parts = splitRuleLine(s)
     const noResolve = parts.length > 2 && parts[parts.length - 1].toLowerCase() === 'no-resolve'
     if (noResolve) parts.pop()
     const type = parts[0].toUpperCase()
@@ -144,7 +164,7 @@ export function yamlToRules(text: string, existing: CustomRule[], genId: () => s
       }
       const s = String(raw).trim()
       if (!s) continue
-      const parts = s.split(',').map((x) => x.trim())
+      const parts = splitRuleLine(s)
       const noResolve = parts[parts.length - 1] === 'no-resolve'
       if (noResolve) parts.pop()
       if (parts.length < 3) throw new Error(`规则格式错误：${s}`)

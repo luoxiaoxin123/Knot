@@ -3,10 +3,10 @@ import YAML from 'yaml'
 import { parseUri } from '../src/core/uri-parse.ts'
 import { toUri } from '../src/core/uri-emit.ts'
 import { parseSubscription } from '../src/core/sub-parse.ts'
-import { generateClash, generateSingbox, generateV2ray, type GenContext } from '../src/core/generate.ts'
+import { generate, generateClash, generateSingbox, generateV2ray, type GenContext } from '../src/core/generate.ts'
 import type { Node, CustomRule } from '../../shared/types.ts'
 import { URIS, settings, profile } from './fixtures.ts'
-import { expandCustomRules, parseRuleLines, rulesToYaml, yamlToRules } from '../../shared/rules-yaml.ts'
+import { expandCustomRules, parseRuleLines, rulesToYaml, splitRuleLine, yamlToRules } from '../../shared/rules-yaml.ts'
 
 function mkNodes(): Node[] {
   return URIS.map((u, i) => {
@@ -243,5 +243,34 @@ describe('custom rule sets', () => {
     const y = YAML.parse(generateClash({ nodes: mkNodes(), subscriptions: [], templates: [], customRules: e, settings }, profile()).text)
     expect(y.rules.slice(0, 3)).toEqual(['DOMAIN,x.com,DIRECT', 'DOMAIN-SUFFIX,reddit.com,reddit', 'DOMAIN-SUFFIX,redd.it,REJECT'])
     expect(y['proxy-groups'].some((g: any) => g.name === 'reddit')).toBe(true)
+  })
+})
+
+describe('extended rule types', () => {
+  const PROC = 'PROCESS-NAME-REGEX,^(avp|avpui|kldw|plugins_nms|plugins-setup|wmiav|vssbridge64|upgrade|troubleshoot|uninstallation_assistant_host)[.]exe$,DIRECT'
+  it('parses mihomo-only and logic rules', () => {
+    expect(splitRuleLine('AND,((DOMAIN,a.com),(NETWORK,UDP)),REJECT,no-resolve')).toEqual(['AND', '((DOMAIN,a.com),(NETWORK,UDP))', 'REJECT', 'no-resolve'])
+    expect(splitRuleLine('NOT,((DOMAIN-SUFFIX,cn))')).toEqual(['NOT', '((DOMAIN-SUFFIX,cn))'])
+    const r = parseRuleLines(`- ${PROC}\n- AND,((DOMAIN,a.com),(NETWORK,UDP)),REJECT\n- DOMAIN-WILDCARD,*.google.com,自用\n- NOT,((DOMAIN-SUFFIX,cn))`, '自用')
+    expect(r.errors).toEqual([])
+    expect(r.rules[0].type).toBe('PROCESS-NAME-REGEX')
+    expect(r.rules[1]).toMatchObject({ type: 'AND', value: '((DOMAIN,a.com),(NETWORK,UDP))', policy: 'REJECT' })
+    expect(r.rules[3]).toMatchObject({ type: 'NOT', value: '((DOMAIN-SUFFIX,cn))', policy: '' })
+  })
+  it('passes through to clash, converts for sing-box, skips for stash', () => {
+    const set: CustomRule = { id: 's', enabled: true, position: 'head', remark: 'x', kind: 'set', rules: `${PROC}\nAND,((DOMAIN,a.com),(NETWORK,UDP)),REJECT`, policy: '', order: 0 }
+    const ctx: GenContext = { nodes: mkNodes(), subscriptions: [], templates: [], customRules: expandCustomRules([set]), settings }
+    const y = YAML.parse(generateClash(ctx, profile()).text)
+    expect(y.rules[0]).toBe(PROC)
+    expect(y.rules[1]).toBe('AND,((DOMAIN,a.com),(NETWORK,UDP)),REJECT')
+    const sb = JSON.parse(generateSingbox(ctx, profile()).text)
+    const re = new RegExp(sb.route.rules.find((x: any) => x.process_path_regex).process_path_regex[0])
+    expect(re.test('C:\\Program Files\\Kaspersky\\avp.exe')).toBe(true)
+    expect(re.test('/opt/kaspersky/avpui.exe')).toBe(true)
+    expect(re.test('C:\\Program Files\\x\\notavp.exe')).toBe(false)
+    expect(re.test('C:\\avp.exe\\other.exe')).toBe(false)
+    const stash = generate(ctx, profile(), 'stash')
+    expect(YAML.parse(stash.text).rules).not.toContain(PROC)
+    expect(stash.warnings.join()).toMatch('Stash 不支持')
   })
 })

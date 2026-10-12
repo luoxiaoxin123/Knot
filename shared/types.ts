@@ -39,7 +39,7 @@ export interface Node {
   enabled: boolean
   tags: string[]
   createdAt: number
-  /** 手动设置的国旗（ISO 3166 两位代码，如 JP）。输出时加在节点名前，地区分组也以它为准 */
+  /** 手动设置的旗帜（ISO 3166 两位代码，如 JP）。输出时加在节点名前，地区分组也以它为准 */
   flag?: string
   /** 最近一次测速结果（ms），-1 表示失败 */
   latency?: number
@@ -56,7 +56,7 @@ export interface NodeCheck {
   at: number
   /** 内核真实延迟（ms），-1 不可用 */
   delay: number
-  /** 落地出口 IP / 国家 */
+  /** 落地出口 IP / 地区 */
   ip?: string
   country?: string
   unlock?: Partial<Record<UnlockService, { status: UnlockStatus; region?: string; note?: string }>>
@@ -98,24 +98,45 @@ export interface Subscription {
 
 export type RulePolicy = string // 代理组名 / DIRECT / REJECT / 节点名
 
+/** mihomo 支持的规则类型（MATCH 由分流模块生成，SUB-RULE 需要 sub-rules 配置，不在此列） */
 export const RULE_TYPES = [
   'DOMAIN',
   'DOMAIN-SUFFIX',
   'DOMAIN-KEYWORD',
+  'DOMAIN-WILDCARD',
   'DOMAIN-REGEX',
   'GEOSITE',
   'GEOIP',
   'IP-CIDR',
   'IP-CIDR6',
+  'IP-SUFFIX',
   'IP-ASN',
+  'SRC-GEOIP',
+  'SRC-IP-ASN',
   'SRC-IP-CIDR',
+  'SRC-IP-SUFFIX',
   'DST-PORT',
   'SRC-PORT',
+  'IN-PORT',
+  'IN-TYPE',
+  'IN-USER',
+  'IN-NAME',
   'PROCESS-NAME',
+  'PROCESS-NAME-WILDCARD',
+  'PROCESS-NAME-REGEX',
   'PROCESS-PATH',
+  'PROCESS-PATH-WILDCARD',
+  'PROCESS-PATH-REGEX',
+  'UID',
   'NETWORK',
+  'DSCP',
   'RULE-SET',
+  'AND',
+  'OR',
+  'NOT',
 ] as const
+/** 可以加 no-resolve 的类型 */
+export const NO_RESOLVE_TYPES: ReadonlySet<string> = new Set(['IP-CIDR', 'IP-CIDR6', 'IP-SUFFIX', 'IP-ASN', 'GEOIP', 'SRC-IP-CIDR', 'RULE-SET'])
 export type RuleType = (typeof RULE_TYPES)[number]
 
 export type RulePosition = 'head' | 'tail'
@@ -221,7 +242,7 @@ export interface Profile {
   regionGroups: boolean
   /** 分流组里是否列出全部节点（可单独指定节点） */
   groupsIncludeNodes: boolean
-  /** 节点名前加上节点页手动设置的国旗 */
+  /** 节点名前加上节点页手动设置的旗帜 */
   addFlags: boolean
   /** 下发 subscription-userinfo：汇总所选外部订阅的流量信息 */
   trafficInfo: boolean

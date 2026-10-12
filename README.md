@@ -14,7 +14,7 @@
 - 粘贴导入：`vless` `vmess` `trojan` `ss`（含 SS2022 / obfs / v2ray-plugin）`ssr` `hysteria2`（含端口跳跃）`hysteria` `tuic` `anytls` `wireguard` `socks5` `http` 分享链接，Base64 订阅内容，Clash YAML，sing-box JSON
 - 节点启用 / 停用、标签、批量操作、复制分享链接、二维码、YAML 直接编辑
 - **真实延迟测试**：调用 mihomo 内核经节点实际请求测速，支持 Hysteria2 / TUIC 等 UDP 协议和链式代理（没有内核时退回 TCP 握手延迟）
-- **解锁检测**：检测落地出口 IP / 国家，以及 ChatGPT（网页 / App）、Claude、Gemini、Netflix（全解锁 / 仅自制剧）、YouTube Premium 是否可用
+- **解锁检测**：检测落地出口 IP / 地区，以及 ChatGPT（网页 / App）、Claude、Gemini、Netflix（全解锁 / 仅自制剧）、YouTube Premium 是否可用
 - **临时分享**：勾选节点生成一次性 / 限次 / 限时的分享链接，随时作废，带访问记录
 
 **外部订阅**
@@ -28,14 +28,15 @@
 - 支持多级链（中转节点本身也可以是链式节点），自动检测循环引用
 - 中转节点即使没被订阅输出选中，也会自动写入配置（只放在 `proxies`，不进分组，避免干扰）
 - 链式节点的配置在导出时从落地节点实时派生：落地节点更新（换端口 / 换 IP）后，链式节点自动跟着变
-- 地区分组按**落地节点**判断；链式节点没单独设国旗时沿用落地节点的国旗
+- 地区分组按**落地节点**判断；链式节点没单独设旗帜时沿用落地节点的旗帜
 - Clash 输出为 `dialer-proxy`，sing-box 输出为 `detour`；V2Ray 链接无法表达链式代理，会自动跳过
 
 **分流规则**
 - 内置分流模块（见下文），在每个订阅输出里勾选启用，预设「极简 / 推荐 / 完整」
 - 自定义规则：可视化编辑与 YAML 编辑双模式，所有规则在一个列表里，每项可单独启用 / 停用、调整顺序
   - 规则集：起个名字，一次粘贴多条规则（YAML 列表、Clash 规则文件的 `payload:` 或纯文本都行），每行 `类型,值[,策略][,no-resolve]`，没写策略的行使用默认策略
-  - 单条规则：DOMAIN / DOMAIN-SUFFIX / DOMAIN-KEYWORD / DOMAIN-REGEX / GEOSITE / GEOIP / IP-CIDR / IP-CIDR6 / IP-ASN / SRC-IP-CIDR / DST-PORT / SRC-PORT / PROCESS-NAME / PROCESS-PATH / NETWORK / RULE-SET
+  - 支持 mihomo 的全部规则类型：DOMAIN / DOMAIN-SUFFIX / DOMAIN-KEYWORD / DOMAIN-WILDCARD / DOMAIN-REGEX / GEOSITE / GEOIP / IP-CIDR / IP-CIDR6 / IP-SUFFIX / IP-ASN / SRC-GEOIP / SRC-IP-ASN / SRC-IP-CIDR / SRC-IP-SUFFIX / DST-PORT / SRC-PORT / IN-PORT / IN-TYPE / IN-USER / IN-NAME / PROCESS-NAME(-WILDCARD / -REGEX) / PROCESS-PATH(-WILDCARD / -REGEX) / UID / NETWORK / DSCP / RULE-SET，以及逻辑规则 AND / OR / NOT
+  - 其他客户端不支持的类型会在生成时跳过并给出提示（sing-box 会把 PROCESS-NAME-REGEX 自动转换成路径正则）
   - 远程规则集：yaml / text / mrs，domain / ipcidr / classical
   - 在编辑框的「模式」里选择**添加至头部**（最高优先级）或**添加至尾部**（兜底之前）
   - 策略可以是分组、DIRECT、REJECT、具体节点；填一个不存在的名字会**自动新建分组**
@@ -54,7 +55,7 @@
 - **访问控制**：启用 / 停用、有效期、最多拉取次数、每小时频率限制、IP 白名单；访问记录里能看到被拒绝的请求和原因
 - 同一个链接根据客户端 UA 自动返回 Clash YAML / sing-box JSON / Base64，也可以用 `?target=clash|singbox|v2ray` 指定
 - 自动地区分组（香港 / 台湾 / 日本 / 新加坡 / 美国 / 韩国）
-- 国旗：在「节点」页手动给节点设置（可批量），输出时加在节点名前；不按 IP 或名称自动猜，避免中转导致地区不准
+- 旗帜：在「节点」页手动给节点设置（可批量），输出时加在节点名前；不按 IP 或名称自动猜，避免中转导致地区不准
 - 覆写 YAML：与生成的配置深度合并，修改端口、DNS、TUN 等任意字段
 - 预览生成结果，显示转换警告；记录最近的拉取记录（时间 / IP / UA）
 - 一键导入链接、二维码、链接泄露时可重置

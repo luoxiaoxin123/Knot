@@ -272,7 +272,7 @@ api.put('/nodes/:id', async (c) => {
   return c.json(nodeView(n))
 })
 
-/** 国旗只接受两位国家代码，空值表示清除 */
+/** 旗帜只接受两位地区代码，空值表示清除 */
 function setFlag(n: Node, flag: unknown) {
   const code = String(flag || '').trim().toUpperCase()
   if (/^[A-Z]{2}$/.test(code)) n.flag = code

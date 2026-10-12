@@ -371,6 +371,8 @@ function convertRule(target: IosTarget, type: string, value: string, policy: str
     if (type === 'DST-PORT') return `DEST-PORT,${value},${policy}`
     if (type === 'SRC-IP-CIDR') return `SRC-IP,${value},${policy}`
     if (type === 'IP-ASN') return `IP-ASN,${value},${policy}${nr}`
+    if (type === 'DOMAIN-WILDCARD') return `DOMAIN-WILDCARD,${value},${policy}`
+    if (type === 'PROCESS-NAME-WILDCARD') return `PROCESS-NAME,${value},${policy}` // Surge 的 PROCESS-NAME 本身支持通配符
     if (type === 'DOMAIN-REGEX') return null
   }
   return null

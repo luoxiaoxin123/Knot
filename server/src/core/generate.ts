@@ -1,5 +1,5 @@
 import YAML from 'yaml'
-import type { CustomGroup, CustomRule, Node, OutputTarget, Profile, Proxy, RuleTemplate, Settings, Subscription } from '../../../shared/types.ts'
+import { NO_RESOLVE_TYPES, type CustomGroup, type CustomRule, type Node, type OutputTarget, type Profile, type Proxy, type RuleTemplate, type Settings, type Subscription } from '../../../shared/types.ts'
 import { generateIos, type IosOptions } from './ios.ts'
 import { stashTransform } from './stash.ts'
 import { applyCustomGroups, applyCustomGroupsSingbox, groupsToCustom } from './custom-groups.ts'
@@ -77,7 +77,7 @@ export function resolveProxies(ctx: GenContext, profile: Profile): ResolvedProxi
     return t ? landing(t, depth + 1) : n
   }
   const assign = (n: Node) => {
-    // 国旗以节点页手动设置的为准（链式节点没设时沿用落地节点的），不按名称或 IP 猜
+    // 旗帜以节点页手动设置的为准（链式节点没设时沿用落地节点的），不按名称或 IP 猜
     const code = n.flag || (n.source.kind === 'chain' ? landing(n).flag : undefined)
     const region = (code && REGIONS.find((r) => r.code === code)) || detectRegion(landing(n).name)
     let base = n.name.trim() || n.id
@@ -180,7 +180,6 @@ function ruleProvider(settings: Settings, kind: 'geosite' | 'geoip', name: strin
   return { pname, p }
 }
 
-const IP_TYPES = new Set(['IP-CIDR', 'IP-CIDR6', 'SRC-IP-CIDR', 'IP-ASN', 'GEOIP'])
 
 function buildCustomClash(rules: CustomRule[], settings: Settings, viaProxyGroup: string | null): ClashRulesBuild {
   const out: ClashRulesBuild = { providers: {}, head: [], tail: [], policies: new Set() }
@@ -217,7 +216,7 @@ function buildCustomClash(rules: CustomRule[], settings: Settings, viaProxyGroup
         out.providers[pname] = p
         line = `RULE-SET,${pname},${policy}${kind === 'geoip' && r.noResolve ? ',no-resolve' : ''}`
       } else {
-        line = `${r.type},${value},${policy}${r.noResolve && IP_TYPES.has(r.type) ? ',no-resolve' : ''}`
+        line = `${r.type},${value},${policy}${r.noResolve && NO_RESOLVE_TYPES.has(r.type) ? ',no-resolve' : ''}`
       }
     }
     ;(r.position === 'tail' ? out.tail : out.head).push(line)
@@ -683,6 +682,16 @@ function singboxRule(r: CustomRule, settings: Settings, ruleSets: Map<string, an
       return { process_name: [v] }
     case 'PROCESS-PATH':
       return { process_path: [v] }
+    case 'PROCESS-PATH-REGEX':
+      return { process_path_regex: [v] }
+    case 'PROCESS-NAME-REGEX': {
+      // sing-box 只有路径正则：把「进程名」正则改成只匹配路径的最后一段
+      const seg = '[^\\\\/]*'
+      const body = v.startsWith('^') ? v.slice(1) : seg + `(?:${v})`
+      return { process_path_regex: [`(?:^|[\\\\/])(?:${body})${v.endsWith('$') ? '' : seg + '$'}`] }
+    }
+    case 'UID':
+      return /^\d+$/.test(v) ? { user_id: [Number(v)] } : null
     case 'NETWORK':
       return { network: [v.toLowerCase()] }
     case 'GEOSITE':

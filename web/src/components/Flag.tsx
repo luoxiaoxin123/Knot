@@ -36,8 +36,8 @@ export function Flag({ code, className }: { code?: string; className?: string })
   )
 }
 
-/** 选择国旗。value 为空表示未设置 */
-export function FlagPicker({ value, title = '设置国旗', onClose, onChange }: { value?: string; title?: string; onClose: () => void; onChange: (code: string) => void }) {
+/** 选择旗帜（按地区）。value 为空表示未设置 */
+export function FlagPicker({ value, title = '设置旗帜', onClose, onChange }: { value?: string; title?: string; onClose: () => void; onChange: (code: string) => void }) {
   const [q, setQ] = useState('')
   const list = useMemo(() => {
     const kw = q.trim().toLowerCase()
@@ -70,7 +70,7 @@ export function FlagPicker({ value, title = '设置国旗', onClose, onChange }:
       width="max-w-xl"
       footer={
         <>
-          {value && <Button onClick={() => onChange('')}>清除国旗</Button>}
+          {value && <Button onClick={() => onChange('')}>清除旗帜</Button>}
           <Button onClick={onClose}>取消</Button>
         </>
       }
@@ -78,9 +78,9 @@ export function FlagPicker({ value, title = '设置国旗', onClose, onChange }:
       <div className="space-y-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
-          <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索国家或地区：日本 / japan / JP" className="pl-8" />
+          <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索地区：日本 / japan / JP" className="pl-8" />
         </div>
-        <p className="text-xs text-zinc-500">按节点实际的落地地区手动选择（经过中转时 IP 归属地不准）。订阅输出开启「节点名加国旗」时，会加在节点名前面。</p>
+        <p className="text-xs text-zinc-500">按节点实际的落地地区手动选择（经过中转时 IP 归属地不准）。订阅输出开启「节点名加旗帜」时，会加在节点名前面。</p>
         {list ? (
           list.length ? (
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">{list.map(item)}</div>

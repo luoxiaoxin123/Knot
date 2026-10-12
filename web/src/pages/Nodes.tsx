@@ -294,7 +294,7 @@ export default function NodesPage() {
             await copyText(uris.join('\n'))
             toast(`已复制 ${uris.length} 条分享链接`)
           }}>复制链接</Button>
-          <Button size="sm" onClick={() => setFlagFor({ ids: [...selected] })}><FlagIcon className="size-3.5" />设置国旗</Button>
+          <Button size="sm" onClick={() => setFlagFor({ ids: [...selected] })}><FlagIcon className="size-3.5" />设置旗帜</Button>
           <Button size="sm" onClick={() => setSharing([...selected])}><Send className="size-3.5" />临时分享</Button>
           <Button size="sm" variant="danger" onClick={() => batch('delete')}>删除</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>取消选择</Button>
@@ -361,7 +361,7 @@ export default function NodesPage() {
       {flagFor && (
         <FlagPicker
           value={flagFor.value}
-          title={flagFor.ids.length > 1 ? `给 ${flagFor.ids.length} 个节点设置国旗` : `设置国旗 · ${byId.get(flagFor.ids[0])?.name || ''}`}
+          title={flagFor.ids.length > 1 ? `给 ${flagFor.ids.length} 个节点设置旗帜` : `设置旗帜 · ${byId.get(flagFor.ids[0])?.name || ''}`}
           onClose={() => setFlagFor(null)}
           onChange={(code) => saveFlag(flagFor.ids, code)}
         />
@@ -378,14 +378,14 @@ export default function NodesPage() {
   )
 }
 
-/** 名称前的国旗；没设置时显示一个淡色的占位按钮 */
+/** 名称前的旗帜；没设置时显示一个淡色的占位按钮 */
 function FlagButton({ own, inherited, onClick }: { own?: string; inherited?: string; onClick: () => void }) {
   const code = own || inherited
   return (
     <button
       type="button"
       onClick={onClick}
-      title={code ? (own ? '更改国旗' : '沿用落地节点的国旗，点击单独设置') : '设置国旗'}
+      title={code ? (own ? '更改旗帜' : '沿用落地节点的旗帜，点击单独设置') : '设置旗帜'}
       className={cx(
         'flex h-5 w-6 shrink-0 items-center justify-center rounded text-base leading-none transition-colors',
         code ? 'hover:bg-zinc-100 dark:hover:bg-zinc-800' : 'border border-dashed border-zinc-300 text-zinc-300 hover:border-zinc-400 hover:text-zinc-500 dark:border-zinc-700 dark:text-zinc-600',

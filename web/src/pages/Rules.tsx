@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, ArrowRight, Pencil, Plus, Trash2, RefreshCw, FileCode2, ListTree, Eye } from 'lucide-react'
-import type { CustomRule, RulePosition, RuleTemplate } from '@shared/types'
+import { NO_RESOLVE_TYPES, type CustomRule, type RulePosition, type RuleTemplate } from '@shared/types'
 import { parseRuleLines, rulesToYaml, yamlToRules } from '@shared/rules-yaml'
 import { api, fmtTime } from '../lib/api'
 import { useCustomRules, useNodes, useRulesMeta, useTemplates, type RulesMeta } from '../lib/hooks'
@@ -55,22 +55,40 @@ const TYPE_INFO: Record<string, { desc: string; ph: string }> = {
   DOMAIN: { desc: '完整域名，精确匹配', ph: 'www.example.com' },
   'DOMAIN-SUFFIX': { desc: '域名后缀，包含所有子域名', ph: 'example.com' },
   'DOMAIN-KEYWORD': { desc: '域名包含关键字', ph: 'google' },
+  'DOMAIN-WILDCARD': { desc: '域名通配符，* 匹配一段，? 匹配一个字符', ph: '*.google.com' },
   'DOMAIN-REGEX': { desc: '域名正则', ph: '^ad\\..*\\.com$' },
   GEOSITE: { desc: '域名分类（自动转为 MetaCubeX 规则集）', ph: 'openai' },
   GEOIP: { desc: 'IP 归属地 / 分类（自动转为规则集）', ph: 'cn' },
   'IP-CIDR': { desc: 'IPv4 地址段', ph: '1.1.1.0/24' },
   'IP-CIDR6': { desc: 'IPv6 地址段', ph: '2001:db8::/32' },
+  'IP-SUFFIX': { desc: 'IP 后缀，按末尾若干位匹配', ph: '8.8.8.8/24' },
   'IP-ASN': { desc: 'IP 所属 ASN（需要客户端下载 ASN 数据库）', ph: '13335' },
+  'SRC-GEOIP': { desc: '来源 IP 的归属地', ph: 'cn' },
+  'SRC-IP-ASN': { desc: '来源 IP 所属 ASN', ph: '9808' },
   'SRC-IP-CIDR': { desc: '来源 IP，用于给局域网内某台设备单独分流', ph: '192.168.1.100/32' },
+  'SRC-IP-SUFFIX': { desc: '来源 IP 后缀', ph: '192.168.1.201/8' },
   'DST-PORT': { desc: '目标端口，可写范围', ph: '443 或 8000-9000' },
   'SRC-PORT': { desc: '来源端口', ph: '12345' },
+  'IN-PORT': { desc: '入站端口', ph: '7890' },
+  'IN-TYPE': { desc: '入站类型', ph: 'SOCKS/HTTP' },
+  'IN-USER': { desc: '入站用户名', ph: 'alice' },
+  'IN-NAME': { desc: '入站名称', ph: 'ss-in' },
   'PROCESS-NAME': { desc: '进程名，仅桌面端 / Android 有效', ph: 'Telegram.exe' },
+  'PROCESS-NAME-WILDCARD': { desc: '进程名通配符', ph: 'chrome*' },
+  'PROCESS-NAME-REGEX': { desc: '进程名正则', ph: '^(avp|avpui)[.]exe$' },
   'PROCESS-PATH': { desc: '进程完整路径', ph: '/usr/bin/curl' },
+  'PROCESS-PATH-WILDCARD': { desc: '进程路径通配符', ph: '/usr/*/curl' },
+  'PROCESS-PATH-REGEX': { desc: '进程路径正则', ph: '.*bin/curl$' },
+  UID: { desc: 'Linux 用户 ID', ph: '1000' },
   NETWORK: { desc: '网络类型', ph: 'udp' },
+  DSCP: { desc: 'DSCP 标记（仅 TPROXY UDP 入站）', ph: '4' },
   'RULE-SET': { desc: '引用配置中已有的规则集名称', ph: 'geosite-openai' },
+  AND: { desc: '逻辑与：括号里的条件全部满足', ph: '((DOMAIN,example.com),(NETWORK,UDP))' },
+  OR: { desc: '逻辑或：括号里的条件任意一个满足', ph: '((NETWORK,UDP),(DST-PORT,443))' },
+  NOT: { desc: '逻辑非：括号里的条件不满足', ph: '((DOMAIN-SUFFIX,cn))' },
 }
 
-const IP_TYPES = new Set(['IP-CIDR', 'IP-CIDR6', 'SRC-IP-CIDR', 'IP-ASN', 'GEOIP', 'RULE-SET'])
+const IP_TYPES = NO_RESOLVE_TYPES
 
 const GEOSITE_SUGGEST = ['openai', 'anthropic', 'google-gemini', 'category-ai-!cn', 'netflix', 'youtube', 'google', 'github', 'telegram', 'twitter', 'spotify', 'tiktok', 'steam', 'steam@cn', 'epicgames', 'apple', 'microsoft', 'bilibili', 'cn', 'geolocation-!cn', 'category-ads-all', 'private', 'tld-cn', 'gfw', 'cursor', 'xai', 'perplexity', 'discord', 'reddit', 'pixiv', 'twitch', 'disney', 'paypal', 'amazon']
 const GEOIP_SUGGEST = ['cn', 'private', 'telegram', 'google', 'netflix', 'twitter', 'facebook', 'cloudflare']

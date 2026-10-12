@@ -60,6 +60,25 @@ export function toStashProxy(src: Proxy): Proxy {
 }
 
 /** 作为 generateClash 的 transform 使用 */
+const STASH_UNSUPPORTED = new Set([
+  'DOMAIN-WILDCARD',
+  'IP-SUFFIX',
+  'SRC-GEOIP',
+  'SRC-IP-ASN',
+  'SRC-IP-SUFFIX',
+  'IN-PORT',
+  'IN-TYPE',
+  'IN-USER',
+  'IN-NAME',
+  'PROCESS-NAME-WILDCARD',
+  'PROCESS-NAME-REGEX',
+  'PROCESS-PATH-WILDCARD',
+  'PROCESS-PATH-REGEX',
+  'UID',
+  'DSCP',
+  'SUB-RULE',
+])
+
 export function stashTransform(st: ClashStructure) {
   const ok = new Set<string>()
   const dropped = new Set<string>()
@@ -103,6 +122,11 @@ export function stashTransform(st: ClashStructure) {
     }
   }
   if (removed.size) st.rules = st.rules.filter((r) => !(r.startsWith('RULE-SET,') && removed.has(r.split(',')[1])))
+
+  // mihomo 独有的规则类型 Stash 不认识，整份配置会加载失败，先去掉
+  const before = st.rules.length
+  st.rules = st.rules.filter((r) => !STASH_UNSUPPORTED.has(r.slice(0, r.indexOf(',')).trim().toUpperCase()))
+  if (st.rules.length < before) st.warnings.push(`${before - st.rules.length} 条规则的类型 Stash 不支持，已跳过`)
 
   // 只保留 Stash 支持的常规设置
   const c = st.config
