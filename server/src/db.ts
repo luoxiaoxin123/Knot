@@ -22,7 +22,7 @@ export function defaultSettings(): Settings {
       bucket: '',
       accessKeyId: '',
       secretAccessKey: '',
-      prefix: 'switch/',
+      prefix: 'knot/',
       pathStyle: false,
       intervalHours: 24,
       keep: 14,

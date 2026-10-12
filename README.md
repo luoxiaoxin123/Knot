@@ -1,4 +1,6 @@
-# Switch
+# Knot（结点）
+
+<img src="web/public/favicon.svg" width="64" alt="Knot" />
 
 自托管的订阅聚合与转换工具：把**自建节点**和**外部（机场）订阅**放在一起管理，配置**链式代理**与**分流规则**，生成一个订阅链接导入 Clash / mihomo、Stash、sing-box、Surge、Loon、Quantumult X、V2Ray 系客户端。
 
@@ -119,23 +121,21 @@ Surge / Loon / QX 的分流规则使用 [blackmatrix7/ios_rule_script](https://g
 ### Docker Compose（推荐）
 
 ```bash
-mkdir switch && cd switch
-curl -O https://raw.githubusercontent.com/luoxiaoxin123/switch/main/docker-compose.yml
-# 使用预构建镜像：把 docker-compose.yml 中的 `build: .` 换成
-#   image: ghcr.io/luoxiaoxin123/switch:latest
-docker compose up -d
+mkdir knot && cd knot
+curl -O https://raw.githubusercontent.com/luoxiaoxin123/knot/main/docker-compose.yml
+docker compose up -d          # 拉取预构建镜像
 ```
 
-或者克隆仓库后直接 `docker compose up -d --build`。
+或者克隆仓库后 `docker compose up -d --build` 在本地构建。
 
 打开 `http://服务器IP:3000`，首次访问设置管理密码。数据保存在 `./data/db.json`。
 
 ### Docker
 
 ```bash
-docker run -d --name switch --restart unless-stopped \
+docker run -d --name knot --restart unless-stopped \
   -p 3000:3000 -v $(pwd)/data:/data \
-  ghcr.io/luoxiaoxin123/switch:latest
+  ghcr.io/luoxiaoxin123/knot:latest
 ```
 
 > 镜像由 GitHub Actions 在推送到 main 分支后自动构建（amd64 / arm64）。首次使用需要在 GitHub 仓库的 Packages 中把镜像设为 Public，或先 `docker login ghcr.io`。
@@ -161,6 +161,8 @@ DATA_DIR=./data PORT=3000 npm start
 | `DATA_DIR` | `./data`（镜像内 `/data`） | 数据目录 |
 | `ADMIN_PASSWORD` | — | 首次启动时设置管理密码（已设置过则忽略） |
 | `MIHOMO_PATH` | — | mihomo 内核路径（镜像内为 `/usr/local/bin/mihomo`） |
+
+> 名字的由来：Knot 是「结」，把自建节点、机场订阅、链式代理结在一起；「结点」也是节点的旧称。
 | `NODE_USE_ENV_PROXY` + `HTTPS_PROXY` | — | 服务器拉取订阅 / 模板需要走代理时设置 |
 
 ### 反向代理（HTTPS）

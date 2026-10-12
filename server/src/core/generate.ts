@@ -608,7 +608,7 @@ export function generateClash(ctx: GenContext, profile: Profile, transform?: (st
       })
     }
   }
-  const header = `# ${profile.name} — 由 Switch 生成于 ${new Date().toISOString()}\n`
+  const header = `# ${profile.name} — 由 Knot 生成于 ${new Date().toISOString()}\n`
   return {
     text: header + doc.toString({ lineWidth: 0 }),
     warnings,

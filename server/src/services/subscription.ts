@@ -75,7 +75,7 @@ export async function refreshTemplate(id: string) {
   const t = db.data.templates.find((x) => x.id === id)
   if (!t || !t.url) return
   try {
-    const { text } = await httpGet(t.url, 'switch')
+    const { text } = await httpGet(t.url, 'knot')
     t.content = text
     t.lastError = undefined
   } catch (e: any) {

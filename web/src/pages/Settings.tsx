@@ -149,7 +149,7 @@ function S3Card({ f, setS3, save }: { f: SettingsView; setS3: (k: string, v: any
             <Input value={s3.bucket} onChange={(e) => setS3('bucket', e.target.value)} />
           </Field>
           <Field label="路径前缀">
-            <Input value={s3.prefix} onChange={(e) => setS3('prefix', e.target.value)} placeholder="switch/" />
+            <Input value={s3.prefix} onChange={(e) => setS3('prefix', e.target.value)} placeholder="knot/" />
           </Field>
           <Field label="Access Key ID">
             <Input value={s3.accessKeyId} onChange={(e) => setS3('accessKeyId', e.target.value)} autoComplete="off" />

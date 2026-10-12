@@ -3,7 +3,7 @@ import { db, defaultSettings, migrate } from '../db.ts'
 import { s3Delete, s3List, s3Put, s3Get } from './s3.ts'
 
 export interface BackupFile {
-  app: 'switch'
+  app: 'knot'
   version: number
   exportedAt: string
   data: Omit<DbData, 'auth' | 'version'>
@@ -14,7 +14,7 @@ export function exportBackup(): BackupFile {
   const d = db.data
   const { s3, ...settings } = d.settings
   return {
-    app: 'switch',
+    app: 'knot',
     version: d.version,
     exportedAt: new Date().toISOString(),
     data: {
@@ -30,7 +30,8 @@ export function exportBackup(): BackupFile {
 }
 
 export function importBackup(raw: any) {
-  const b = raw?.app === 'switch' ? raw.data : raw
+  // 兼容改名前（Switch）的备份
+  const b = raw?.app === 'knot' || raw?.app === 'switch' ? raw.data : raw
   if (!b || !Array.isArray(b.nodes) || !Array.isArray(b.profiles)) throw new Error('不是有效的备份文件')
   const keepS3 = db.data.settings.s3
   db.data.settings = { ...defaultSettings(), ...(b.settings || {}), s3: keepS3 }
@@ -53,7 +54,7 @@ export async function backupToS3(): Promise<string> {
   const cfg = db.data.settings.s3
   if (!cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) throw new Error('S3 未配置完整')
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
-  const key = `${prefix()}switch-backup-${ts}.json`
+  const key = `${prefix()}knot-backup-${ts}.json`
   try {
     await s3Put(cfg, key, JSON.stringify(exportBackup()))
     cfg.lastBackupAt = Date.now()
@@ -75,7 +76,7 @@ export async function backupToS3(): Promise<string> {
 export async function listS3Backups() {
   const cfg = db.data.settings.s3
   const list = await s3List(cfg, prefix())
-  return list.filter((o) => /switch-backup-.*\.json$/.test(o.key)).sort((a, b) => (a.key < b.key ? 1 : -1))
+  return list.filter((o) => /(knot|switch)-backup-.*\.json$/.test(o.key)).sort((a, b) => (a.key < b.key ? 1 : -1))
 }
 
 export async function restoreFromS3(key: string) {

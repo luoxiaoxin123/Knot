@@ -29,6 +29,6 @@ if (existsSync(WEB_DIR)) {
 const port = Number(process.env.PORT || 3000)
 const hostname = process.env.HOST || '0.0.0.0'
 serve({ fetch: app.fetch, port, hostname }, () => {
-  console.log(`Switch 已启动: http://${hostname}:${port}  数据目录: ${process.env.DATA_DIR || './data'}`)
+  console.log(`Knot 已启动: http://${hostname}:${port}  数据目录: ${process.env.DATA_DIR || './data'}`)
 })
 startScheduler()

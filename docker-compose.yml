@@ -1,7 +1,9 @@
 services:
-  switch:
+  knot:
+    # 默认拉取 GitHub Actions 构建的镜像；clone 仓库后用 `docker compose up -d --build` 则本地构建
+    image: ghcr.io/luoxiaoxin123/knot:latest
     build: .
-    container_name: switch
+    container_name: knot
     restart: unless-stopped
     ports:
       - "3000:3000"

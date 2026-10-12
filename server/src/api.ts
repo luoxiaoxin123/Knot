@@ -832,7 +832,7 @@ api.put('/settings', async (c) => {
 
 api.get('/backup/export', (c) => {
   logReq(c, 'admin', 'backup_export', true, { detail: '下载了备份文件' })
-  const name = `switch-backup-${new Date().toISOString().slice(0, 10)}.json`
+  const name = `knot-backup-${new Date().toISOString().slice(0, 10)}.json`
   c.header('Content-Disposition', `attachment; filename="${name}"`)
   return c.json(exportBackup())
 })

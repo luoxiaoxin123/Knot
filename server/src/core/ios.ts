@@ -506,7 +506,7 @@ export function generateIos(ctx: GenContext, profile: Profile, target: IosTarget
   const orderNote =
     target === 'surge' ? '' : `# 注意：${label} 中本地规则优先于远程规则，自定义尾部规则与 GEOIP,CN 会先于远程规则集匹配`
 
-  const header = `# ${profile.name} — 由 Switch 生成于 ${new Date().toISOString()}`
+  const header = `# ${profile.name} — 由 Knot 生成于 ${new Date().toISOString()}`
   const skip = '127.0.0.1, 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 100.64.0.0/10, localhost, *.local'
   let text = ''
   if (target === 'surge') {

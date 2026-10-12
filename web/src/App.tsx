@@ -29,7 +29,7 @@ function Logo() {
   return (
     <div className="flex items-center gap-2">
       <img src="/favicon.svg" className="size-6" alt="" />
-      <span className="text-[15px] font-semibold tracking-tight">Switch</span>
+      <span className="text-[15px] font-semibold tracking-tight">Knot</span>
     </div>
   )
 }

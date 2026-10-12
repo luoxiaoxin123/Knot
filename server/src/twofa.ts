@@ -79,7 +79,7 @@ export function totpEnabled() {
 export function startTotpSetup() {
   const secret = base32Encode(randomBytes(20))
   pendingTotp = { secret, at: Date.now() }
-  const uri = `otpauth://totp/Switch:admin?secret=${secret}&issuer=Switch&algorithm=SHA1&digits=6&period=30`
+  const uri = `otpauth://totp/Knot:admin?secret=${secret}&issuer=Knot&algorithm=SHA1&digits=6&period=30`
   return { secret, uri }
 }
 
@@ -160,10 +160,10 @@ export function passkeys(): Passkey[] {
 export async function passkeyRegisterOptions(c: Context) {
   const { rpID } = originOf(c)
   const options = await generateRegistrationOptions({
-    rpName: 'Switch',
+    rpName: 'Knot',
     rpID,
     userName: 'admin',
-    userDisplayName: 'Switch 管理员',
+    userDisplayName: 'Knot 管理员',
     attestationType: 'none',
     excludeCredentials: passkeys().filter((p) => p.rpID === rpID).map((p) => ({ id: p.id, transports: p.transports })),
     authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
