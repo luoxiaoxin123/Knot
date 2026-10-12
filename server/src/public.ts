@@ -4,6 +4,7 @@ import type { AccessControl, AccessLog, OutputTarget, Profile, Share } from '../
 import { db, newProfile } from './db.ts'
 import { genCtx } from './ctx.ts'
 import { checkAccess, clientIp, pushLog } from './access.ts'
+import { addLog } from './logs.ts'
 import { generate, selectNodes } from './core/generate.ts'
 
 export const pub = new Hono()
@@ -11,32 +12,59 @@ export const pub = new Hono()
 /** 根据 UA 判断客户端需要的格式 */
 export function detectTarget(ua: string): OutputTarget {
   const u = ua.toLowerCase()
+  if (/stash/.test(u)) return 'stash'
+  if (/surge/.test(u)) return 'surge'
+  if (/loon/.test(u)) return 'loon'
+  if (/quantumult/.test(u)) return 'qx'
   if (/sing-box|singbox|sfa|sfi|sfm|sft/.test(u)) return 'singbox'
-  if (/clash|mihomo|stash|meta|verge|flclash|nyanpasu|koala|hiddify/.test(u)) return 'clash'
+  if (/clash|mihomo|meta|verge|flclash|nyanpasu|koala|hiddify/.test(u)) return 'clash'
   return 'v2ray'
+}
+
+const TARGET_ALIAS: Record<string, OutputTarget> = {
+  clash: 'clash',
+  mihomo: 'clash',
+  stash: 'stash',
+  singbox: 'singbox',
+  'sing-box': 'singbox',
+  surge: 'surge',
+  loon: 'loon',
+  qx: 'qx',
+  quantumultx: 'qx',
+  quanx: 'qx',
+  v2ray: 'v2ray',
+  base64: 'v2ray',
 }
 
 function pickTarget(c: Context): OutputTarget {
   const q = (c.req.query('target') || c.req.query('t') || '').toLowerCase()
-  if (q === 'clash' || q === 'mihomo') return 'clash'
-  if (q === 'singbox' || q === 'sing-box') return 'singbox'
-  if (q === 'v2ray' || q === 'base64') return 'v2ray'
-  return detectTarget(c.req.header('user-agent') || '')
+  return TARGET_ALIAS[q] || detectTarget(c.req.header('user-agent') || '')
 }
 
 /** 访问控制 + 记录日志；被拒绝时返回响应 */
-function guard(c: Context, key: string, ac: AccessControl, owner: { access?: AccessLog[] }, target: OutputTarget) {
+function guard(
+  c: Context,
+  key: string,
+  ac: AccessControl,
+  owner: { access?: AccessLog[]; name: string },
+  target: OutputTarget,
+  action: 'profile' | 'short' | 'share',
+) {
   const ip = clientIp(c)
   const ua = (c.req.header('user-agent') || '').slice(0, 120)
   const denied = checkAccess(key, ac, ip)
   owner.access = pushLog(owner.access, { at: Date.now(), ip, ua, target, ...(denied ? { denied } : {}) })
+  addLog({ type: 'sub', action, ok: !denied, ip, ua, target, detail: denied ? `${owner.name}：${denied}` : owner.name })
   db.save()
   if (denied) return c.text(denied, denied === '请求过于频繁' ? 429 : 403)
   return null
 }
 
 function respond(c: Context, p: Profile, target: OutputTarget, trafficInfo: boolean) {
-  const r = generate(genCtx(), p, target)
+  const listOnly = ['1', 'true'].includes(c.req.query('list') || '')
+  const u = new URL(c.req.url)
+  const managedUrl = `${db.data.settings.publicUrl || u.origin}${u.pathname}${u.search}`
+  const r = generate(genCtx(), p, target, { listOnly, managedUrl })
   c.header('Content-Type', r.contentType)
   c.header('Profile-Update-Interval', '12')
   c.header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(p.name)}`)
@@ -60,10 +88,14 @@ function respond(c: Context, p: Profile, target: OutputTarget, trafficInfo: bool
   return c.body(r.text)
 }
 
-function serveProfile(c: Context, p: Profile | undefined) {
-  if (!p) return c.text('Not Found', 404)
+function serveProfile(c: Context, p: Profile | undefined, action: 'profile' | 'short', key: string) {
+  if (!p) {
+    // 记录无效链接的访问（可能是在猜链接）
+    addLog({ type: 'sub', action, ok: false, ip: clientIp(c), ua: c.req.header('user-agent') || '', detail: `无效链接 ${key.slice(0, 8)}…` })
+    return c.text('Not Found', 404)
+  }
   const target = pickTarget(c)
-  const blocked = guard(c, `p:${p.id}`, p.accessControl, p, target)
+  const blocked = guard(c, `p:${p.id}`, p.accessControl, p, target, action)
   if (blocked) return blocked
   return respond(c, p, target, p.trafficInfo)
 }
@@ -85,18 +117,25 @@ export function shareProfile(s: Share): Profile {
   }
 }
 
-pub.get('/sub/:token', (c) => serveProfile(c, db.data.profiles.find((x) => x.token === c.req.param('token'))))
+pub.get('/sub/:token', (c) => {
+  const token = c.req.param('token')
+  return serveProfile(c, db.data.profiles.find((x) => x.token === token), 'profile', token)
+})
 
 pub.get('/x/:code', (c) => {
   const code = c.req.param('code')
-  return serveProfile(c, code ? db.data.profiles.find((x) => x.shortCode === code) : undefined)
+  return serveProfile(c, code ? db.data.profiles.find((x) => x.shortCode === code) : undefined, 'short', code)
 })
 
 pub.get('/s/:token', (c) => {
-  const s = db.data.shares.find((x) => x.token === c.req.param('token'))
-  if (!s) return c.text('Not Found', 404)
+  const token = c.req.param('token')
+  const s = db.data.shares.find((x) => x.token === token)
+  if (!s) {
+    addLog({ type: 'sub', action: 'share', ok: false, ip: clientIp(c), ua: c.req.header('user-agent') || '', detail: `无效链接 ${token.slice(0, 8)}…` })
+    return c.text('Not Found', 404)
+  }
   const target = pickTarget(c)
-  const blocked = guard(c, `s:${s.id}`, s.accessControl, s, target)
+  const blocked = guard(c, `s:${s.id}`, s.accessControl, s, target, 'share')
   if (blocked) return blocked
   return respond(c, shareProfile(s), target, false)
 })

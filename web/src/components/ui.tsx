@@ -69,23 +69,26 @@ export function IconButton({
 
 // ---------------------------------------------------------------- Inputs
 
+/** 传入了宽度类名（w-*）时不再默认 w-full，避免类名冲突 */
+const widthOf = (className?: string) => (/(^|\s)(sm:|md:|lg:)?w-/.test(className || '') ? '' : 'w-full')
+
 const inputCls =
-  'w-full rounded-md border border-zinc-300 bg-white px-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100'
+  'rounded-md border border-zinc-300 bg-white px-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100'
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className, ...rest },
   ref,
 ) {
-  return <input ref={ref} className={cx(inputCls, 'h-9', className)} {...rest} />
+  return <input ref={ref} className={cx(inputCls, 'h-9', widthOf(className), className)} {...rest} />
 })
 
 export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cx(inputCls, 'py-2 font-mono text-xs leading-relaxed', className)} {...rest} />
+  return <textarea className={cx(inputCls, 'py-2 font-mono text-xs leading-relaxed', widthOf(className), className)} {...rest} />
 }
 
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={cx(inputCls, 'h-9 pr-8', className)} {...rest}>
+    <select className={cx(inputCls, 'h-9 pr-8', widthOf(className), className)} {...rest}>
       {children}
     </select>
   )

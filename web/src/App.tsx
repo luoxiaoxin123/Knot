@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Server, Rss, ListTree, Share2, Send, Settings as SettingsIcon, LogOut, Menu, X } from 'lucide-react'
+import { Server, Rss, ListTree, Share2, Send, ScrollText, History, Settings as SettingsIcon, LogOut, Menu, X, KeyRound } from 'lucide-react'
 import { api } from './lib/api'
 import { Button, Field, Input, Spinner, cx, useToast } from './components/ui'
 import NodesPage from './pages/Nodes'
@@ -11,6 +11,8 @@ import ProfilesPage from './pages/Profiles'
 import ProfileEditPage from './pages/ProfileEdit'
 import SettingsPage from './pages/Settings'
 import SharesPage from './pages/Shares'
+import LogsPage from './pages/Logs'
+import HistoryPage from './pages/History'
 
 const NAV = [
   { to: '/nodes', label: '节点', icon: Server },
@@ -18,6 +20,8 @@ const NAV = [
   { to: '/rules', label: '规则', icon: ListTree },
   { to: '/profiles', label: '订阅输出', icon: Share2 },
   { to: '/shares', label: '临时分享', icon: Send },
+  { to: '/history', label: '历史版本', icon: History },
+  { to: '/logs', label: '日志', icon: ScrollText },
   { to: '/settings', label: '设置', icon: SettingsIcon },
 ]
 
@@ -96,21 +100,44 @@ function Shell({ children }: { children: ReactNode }) {
   )
 }
 
-function AuthScreen({ setup }: { setup: boolean }) {
+function AuthScreen({ setup, passkey }: { setup: boolean; passkey: boolean }) {
   const [pw, setPw] = useState('')
   const [pw2, setPw2] = useState('')
+  const [code, setCode] = useState('')
+  const [need2fa, setNeed2fa] = useState(false)
   const [loading, setLoading] = useState(false)
   const toast = useToast()
   const qc = useQueryClient()
+  const done = () => qc.invalidateQueries({ queryKey: ['auth'] })
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!setup && pw !== pw2) return toast('两次输入的密码不一致', 'error')
     setLoading(true)
     try {
-      await api.post(setup ? '/auth/login' : '/auth/setup', { password: pw })
-      await qc.invalidateQueries({ queryKey: ['auth'] })
+      if (!setup) {
+        await api.post('/auth/setup', { password: pw })
+        return done()
+      }
+      const r = await api.post<{ ok?: boolean; need2fa?: boolean }>('/auth/login', { password: pw, ...(need2fa ? { code } : {}) })
+      if (r.need2fa) setNeed2fa(true)
+      else await done()
     } catch (err: any) {
       toast(err.message, 'error')
+      if (need2fa) setCode('')
+    } finally {
+      setLoading(false)
+    }
+  }
+  const loginPasskey = async () => {
+    setLoading(true)
+    try {
+      const { startAuthentication } = await import('@simplewebauthn/browser')
+      const { options, challengeId } = await api.post<{ options: any; challengeId: string }>('/auth/passkey/login-options')
+      const response = await startAuthentication({ optionsJSON: options })
+      await api.post('/auth/passkey/login', { challengeId, response })
+      await done()
+    } catch (err: any) {
+      if (err?.name !== 'NotAllowedError') toast(err.message || '通行密钥登录失败', 'error')
     } finally {
       setLoading(false)
     }
@@ -120,20 +147,38 @@ function AuthScreen({ setup }: { setup: boolean }) {
       <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <Logo />
         <div>
-          <h1 className="text-lg font-semibold">{setup ? '登录' : '初始化管理员密码'}</h1>
+          <h1 className="text-lg font-semibold">{!setup ? '初始化管理员密码' : need2fa ? '两步验证' : '登录'}</h1>
           {!setup && <p className="mt-1 text-sm text-zinc-500">首次使用，请设置一个管理密码（至少 6 位）。</p>}
+          {need2fa && <p className="mt-1 text-sm text-zinc-500">输入验证器 App 中的 6 位验证码，或一个恢复码。</p>}
         </div>
-        <Field label="密码">
-          <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus autoComplete={setup ? 'current-password' : 'new-password'} />
-        </Field>
+        {need2fa ? (
+          <Field label="验证码">
+            <Input value={code} onChange={(e) => setCode(e.target.value)} autoFocus inputMode="numeric" autoComplete="one-time-code" placeholder="123456" className="text-center font-mono text-lg tracking-widest" />
+          </Field>
+        ) : (
+          <Field label="密码">
+            <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus autoComplete={setup ? 'current-password' : 'new-password'} />
+          </Field>
+        )}
         {!setup && (
           <Field label="确认密码">
             <Input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" />
           </Field>
         )}
         <Button type="submit" variant="primary" className="w-full" loading={loading}>
-          {setup ? '登录' : '完成'}
+          {!setup ? '完成' : need2fa ? '验证' : '登录'}
         </Button>
+        {setup && passkey && !need2fa && (
+          <Button type="button" className="w-full" onClick={loginPasskey} disabled={loading}>
+            <KeyRound className="size-4" />
+            使用通行密钥登录
+          </Button>
+        )}
+        {need2fa && (
+          <button type="button" className="w-full text-center text-xs text-zinc-500 hover:text-zinc-800" onClick={() => { setNeed2fa(false); setCode('') }}>
+            返回
+          </button>
+        )}
       </form>
     </div>
   )
@@ -141,7 +186,7 @@ function AuthScreen({ setup }: { setup: boolean }) {
 
 export default function App() {
   const qc = useQueryClient()
-  const auth = useQuery({ queryKey: ['auth'], queryFn: () => api.get<{ setup: boolean; authed: boolean }>('/auth/status') })
+  const auth = useQuery({ queryKey: ['auth'], queryFn: () => api.get<{ setup: boolean; authed: boolean; passkey: boolean }>('/auth/status') })
   useEffect(() => {
     const fn = () => qc.invalidateQueries({ queryKey: ['auth'] })
     window.addEventListener('sw:unauthorized', fn)
@@ -154,7 +199,7 @@ export default function App() {
       </div>
     )
   }
-  if (!auth.data?.authed) return <AuthScreen setup={!!auth.data?.setup} />
+  if (!auth.data?.authed) return <AuthScreen setup={!!auth.data?.setup} passkey={!!auth.data?.passkey} />
   return (
     <Shell>
       <Routes>
@@ -165,6 +210,8 @@ export default function App() {
         <Route path="/profiles" element={<ProfilesPage />} />
         <Route path="/profiles/:id" element={<ProfileEditPage />} />
         <Route path="/shares" element={<SharesPage />} />
+        <Route path="/logs" element={<LogsPage />} />
+        <Route path="/history" element={<HistoryPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/nodes" replace />} />
       </Routes>

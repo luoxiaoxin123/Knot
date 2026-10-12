@@ -1,6 +1,7 @@
 import { db } from './db.ts'
 import { refreshSubscription, refreshTemplate } from './services/subscription.ts'
 import { backupToS3 } from './services/backup.ts'
+import { pruneLogs } from './logs.ts'
 
 const HOUR = 3600_000
 let running = false
@@ -11,6 +12,7 @@ async function tick() {
   running = true
   const now = Date.now()
   try {
+    pruneLogs()
     for (const s of db.data.subscriptions) {
       if (!s.enabled || !s.intervalHours) continue
       if (now - (s.updatedAt || 0) < s.intervalHours * HOUR) continue

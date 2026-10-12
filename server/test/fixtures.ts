@@ -25,6 +25,7 @@ export const settings: Settings = {
   testUrl: 'https://www.gstatic.com/generate_204',
   s3: { enabled: false, endpoint: '', region: 'auto', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: 'switch/', pathStyle: false, intervalHours: 0, keep: 10 },
   corePath: '',
+  logRetentionDays: 90,
 }
 
 export function profile(p: Partial<Profile> = {}): Profile {

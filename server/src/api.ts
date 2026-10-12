@@ -16,6 +16,22 @@ import {
   verifyPassword,
 } from './auth.ts'
 import { clientIp, validateAllowlist } from './access.ts'
+import { clearLogs, logReq, logStats, queryLogs } from './logs.ts'
+import { capture, commit, getHistory, historyMiddleware, listHistory, restoreHistory } from './history.ts'
+import { importMiaomiaowu, importSubStore } from './services/migrate.ts'
+import {
+  checkSecondFactor,
+  confirmTotpSetup,
+  disableTotp,
+  hasPasskeyFor,
+  passkeyLoginOptions,
+  passkeyLoginVerify,
+  passkeyRegisterOptions,
+  passkeyRegisterVerify,
+  passkeys,
+  startTotpSetup,
+  totpEnabled,
+} from './twofa.ts'
 import { parseSubscription } from './core/sub-parse.ts'
 import { toUri } from './core/uri-emit.ts'
 import { uid } from './core/util.ts'
@@ -35,7 +51,7 @@ const bad = (msg: string) => ({ error: msg })
 
 // ------------------------------- 认证 -------------------------------
 
-api.get('/auth/status', (c) => c.json({ setup: !!db.data.auth.passwordHash, authed: isAuthed(c) }))
+api.get('/auth/status', (c) => c.json({ setup: !!db.data.auth.passwordHash, authed: isAuthed(c), passkey: hasPasskeyFor(c) }))
 
 api.post('/auth/setup', async (c) => {
   if (db.data.auth.passwordHash) return c.json(bad('已初始化'), 400)
@@ -44,37 +60,150 @@ api.post('/auth/setup', async (c) => {
   db.data.auth.passwordHash = hashPassword(String(password))
   db.flush()
   issueSession(c)
+  logReq(c, 'login', 'setup', true, { detail: '初始化管理员密码' })
   return c.json({ ok: true })
 })
 
 api.post('/auth/login', async (c) => {
   const ip = clientIp(c)
-  if (loginBlocked(ip)) return c.json(bad('尝试次数过多，请 10 分钟后再试'), 429)
-  const { password } = await c.req.json()
+  if (loginBlocked(ip)) {
+    logReq(c, 'login', 'password', false, { detail: '尝试次数过多，已被临时封禁' })
+    return c.json(bad('尝试次数过多，请 10 分钟后再试'), 429)
+  }
+  const { password, code } = await c.req.json()
   const hash = db.data.auth.passwordHash
   if (!hash || !verifyPassword(String(password ?? ''), hash)) {
     recordFailure(ip)
+    logReq(c, 'login', 'password', false, { detail: '密码错误' })
     return c.json(bad('密码错误'), 401)
+  }
+  let detail = '密码'
+  if (totpEnabled()) {
+    // 密码正确，等待输入两步验证码
+    if (!code) return c.json({ need2fa: true })
+    const r = checkSecondFactor(String(code))
+    if (!r.ok) {
+      recordFailure(ip)
+      logReq(c, 'login', 'totp', false, { detail: '密码正确，但两步验证码错误' })
+      return c.json(bad('验证码错误'), 401)
+    }
+    detail = r.usedRecovery ? `密码 + 恢复码（剩余 ${db.data.auth.totp?.recoveryHashes.length ?? 0} 个）` : '密码 + 两步验证'
   }
   clearFailures(ip)
   issueSession(c)
+  logReq(c, 'login', 'password', true, { detail })
   return c.json({ ok: true })
 })
 
+api.post('/auth/passkey/login-options', async (c) => {
+  if (loginBlocked(clientIp(c))) return c.json(bad('尝试次数过多，请 10 分钟后再试'), 429)
+  try {
+    return c.json(await passkeyLoginOptions(c))
+  } catch (e: any) {
+    return c.json(bad(e.message), 400)
+  }
+})
+
+api.post('/auth/passkey/login', async (c) => {
+  const ip = clientIp(c)
+  if (loginBlocked(ip)) return c.json(bad('尝试次数过多，请 10 分钟后再试'), 429)
+  const { challengeId, response } = await c.req.json()
+  try {
+    const pk = await passkeyLoginVerify(c, String(challengeId), response)
+    clearFailures(ip)
+    issueSession(c)
+    logReq(c, 'login', 'passkey', true, { detail: `通行密钥：${pk.name}` })
+    return c.json({ ok: true })
+  } catch (e: any) {
+    recordFailure(ip)
+    logReq(c, 'login', 'passkey', false, { detail: e.message })
+    return c.json(bad(e.message), 401)
+  }
+})
+
 api.post('/auth/logout', (c) => {
+  if (isAuthed(c)) logReq(c, 'login', 'logout', true)
   clearSession(c)
   return c.json({ ok: true })
 })
 
 api.use('/*', requireAuth)
+api.use('/*', historyMiddleware)
 
 api.post('/auth/password', async (c) => {
   const { oldPassword, newPassword } = await c.req.json()
-  if (!verifyPassword(String(oldPassword ?? ''), db.data.auth.passwordHash!)) return c.json(bad('原密码错误'), 400)
+  if (!verifyPassword(String(oldPassword ?? ''), db.data.auth.passwordHash!)) {
+    logReq(c, 'admin', 'password_change', false, { detail: '原密码错误' })
+    return c.json(bad('原密码错误'), 400)
+  }
   if (!newPassword || String(newPassword).length < 6) return c.json(bad('新密码至少 6 位'), 400)
   db.data.auth.passwordHash = hashPassword(String(newPassword))
   db.flush()
   issueSession(c)
+  logReq(c, 'admin', 'password_change', true, { detail: '修改了管理密码' })
+  return c.json({ ok: true })
+})
+
+// ------------------------------- 账户安全 -------------------------------
+
+api.get('/auth/security', (c) =>
+  c.json({
+    totp: totpEnabled(),
+    recoveryLeft: db.data.auth.totp?.recoveryHashes.length ?? 0,
+    passkeys: passkeys().map(({ id, name, rpID, createdAt, lastUsedAt }) => ({ id, name, rpID, createdAt, lastUsedAt })),
+  }),
+)
+
+api.post('/auth/totp/setup', (c) => {
+  if (totpEnabled()) return c.json(bad('两步验证已开启'), 400)
+  return c.json(startTotpSetup())
+})
+
+api.post('/auth/totp/enable', async (c) => {
+  const { code } = await c.req.json()
+  const codes = confirmTotpSetup(String(code || ''))
+  if (!codes) return c.json(bad('验证码错误或已过期'), 400)
+  logReq(c, 'admin', 'totp_enable', true, { detail: '开启了两步验证' })
+  return c.json({ recoveryCodes: codes })
+})
+
+api.post('/auth/totp/disable', async (c) => {
+  const { password, code } = await c.req.json()
+  if (!verifyPassword(String(password ?? ''), db.data.auth.passwordHash!) || !checkSecondFactor(String(code || '')).ok) {
+    logReq(c, 'admin', 'totp_disable', false, { detail: '密码或验证码错误' })
+    return c.json(bad('密码或验证码错误'), 400)
+  }
+  disableTotp()
+  logReq(c, 'admin', 'totp_disable', true, { detail: '关闭了两步验证' })
+  return c.json({ ok: true })
+})
+
+api.post('/auth/passkey/register-options', async (c) => {
+  try {
+    return c.json(await passkeyRegisterOptions(c))
+  } catch (e: any) {
+    return c.json(bad(e.message), 400)
+  }
+})
+
+api.post('/auth/passkey/register', async (c) => {
+  const { challengeId, response, name } = await c.req.json()
+  try {
+    const pk = await passkeyRegisterVerify(c, String(challengeId), response, String(name || ''))
+    logReq(c, 'admin', 'passkey_add', true, { detail: `添加通行密钥：${pk.name}` })
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json(bad(e.message), 400)
+  }
+})
+
+api.delete('/auth/passkey/:id', (c) => {
+  const id = c.req.param('id')
+  const pk = passkeys().find((p) => p.id === id)
+  if (!pk) return c.json(bad('不存在'), 404)
+  db.data.auth.passkeys = passkeys().filter((p) => p.id !== id)
+  db.flush()
+  logReq(c, 'admin', 'passkey_remove', true, { detail: `删除通行密钥：${pk.name}` })
   return c.json({ ok: true })
 })
 
@@ -602,6 +731,7 @@ api.post('/profiles/:id/reset-token', (c) => {
   if (!p) return c.json(bad('配置不存在'), 404)
   p.token = randomBytes(16).toString('hex')
   db.save()
+  logReq(c, 'admin', 'token_reset', true, { detail: `重置订阅链接：${p.name}` })
   return c.json(p)
 })
 
@@ -666,7 +796,7 @@ api.post('/profiles/preview', async (c) => {
   const { profile, target } = await c.req.json()
   const base = db.data.profiles.find((x) => x.id === profile?.id) || newProfile('预览')
   const p = { ...base, ...profile }
-  const r = generate(genCtx(), p, target === 'singbox' || target === 'v2ray' ? target : 'clash')
+  const r = generate(genCtx(), p, ['clash', 'stash', 'singbox', 'surge', 'loon', 'qx', 'v2ray'].includes(target) ? target : 'clash')
   const text = target === 'v2ray' ? Buffer.from(r.text, 'base64').toString('utf8') : r.text
   const resolved = resolveProxies(genCtx(), p)
   return c.json({ text, warnings: r.warnings, nodeCount: resolved.visible.length })
@@ -684,6 +814,7 @@ api.get('/settings', (c) => c.json(settingsView()))
 api.put('/settings', async (c) => {
   const b = await c.req.json()
   const s = db.data.settings
+  if (b.logRetentionDays !== undefined) s.logRetentionDays = Math.min(3650, Math.max(1, Number(b.logRetentionDays) || 90))
   for (const k of ['publicUrl', 'ruleMirror', 'ruleMirrorCustom', 'ruleDownloadViaProxy', 'testUrl', 'corePath'] as const) {
     if (b[k] !== undefined) (s as any)[k] = b[k]
   }
@@ -700,6 +831,7 @@ api.put('/settings', async (c) => {
 })
 
 api.get('/backup/export', (c) => {
+  logReq(c, 'admin', 'backup_export', true, { detail: '下载了备份文件' })
   const name = `switch-backup-${new Date().toISOString().slice(0, 10)}.json`
   c.header('Content-Disposition', `attachment; filename="${name}"`)
   return c.json(exportBackup())
@@ -708,6 +840,7 @@ api.get('/backup/export', (c) => {
 api.post('/backup/import', async (c) => {
   try {
     importBackup(await c.req.json())
+    logReq(c, 'admin', 'backup_restore', true, { detail: '从本地文件恢复备份' })
     return c.json({ ok: true })
   } catch (e: any) {
     return c.json(bad(e.message), 400)
@@ -744,6 +877,7 @@ api.post('/backup/s3/restore', async (c) => {
   const { key } = await c.req.json()
   try {
     await restoreFromS3(String(key))
+    logReq(c, 'admin', 'backup_restore', true, { detail: `从 S3 恢复：${key}` })
     return c.json({ ok: true })
   } catch (e: any) {
     return c.json(bad(e.message), 400)
@@ -791,4 +925,74 @@ api.delete('/shares/:id', (c) => {
   db.data.shares = db.data.shares.filter((s) => s.id !== c.req.param('id'))
   db.save()
   return c.json({ ok: true })
+})
+
+// ------------------------------- 日志 -------------------------------
+
+api.get('/logs', (c) =>
+  c.json(
+    queryLogs({
+      type: c.req.query('type'),
+      ok: c.req.query('ok'),
+      q: c.req.query('q'),
+      before: Number(c.req.query('before')) || undefined,
+      limit: Number(c.req.query('limit')) || undefined,
+    }),
+  ),
+)
+
+api.get('/logs/stats', (c) => c.json(logStats()))
+
+api.delete('/logs', (c) => {
+  clearLogs(c.req.query('type'))
+  logReq(c, 'admin', 'logs_clear', true, { detail: `清空日志：${c.req.query('type') || '全部'}` })
+  return c.json({ ok: true })
+})
+
+// ------------------------------- 历史版本 -------------------------------
+
+api.get('/history', (c) => c.json(listHistory(c.req.query('kind'), c.req.query('refId'))))
+
+api.get('/history/:id', (c) => {
+  const r = getHistory(c.req.param('id'))
+  if (!r) return c.json(bad('版本不存在'), 404)
+  return c.json(r)
+})
+
+api.post('/history/:id/restore', (c) => {
+  try {
+    const label = restoreHistory(c.req.param('id'))
+    logReq(c, 'admin', 'history_restore', true, { detail: `恢复历史版本：${label}` })
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json(bad(e.message), 400)
+  }
+})
+
+// ------------------------------- 迁移 -------------------------------
+
+api.post('/migrate/substore', async (c) => {
+  const before = capture('nodes')
+  try {
+    const report = importSubStore(await c.req.text())
+    commit('nodes', undefined, '从 Sub-Store 迁移', before)
+    logReq(c, 'admin', 'migration', true, { detail: `Sub-Store：${report.subscriptions} 个订阅、${report.nodes} 个节点、${report.profiles} 个输出配置` })
+    return c.json(report)
+  } catch (e: any) {
+    return c.json(bad(e.message), 400)
+  }
+})
+
+api.post('/migrate/miaomiaowu', async (c) => {
+  const buf = Buffer.from(await c.req.arrayBuffer())
+  if (buf.length > 200 * 1024 * 1024) return c.json(bad('文件过大'), 400)
+  const before = capture('nodes')
+  try {
+    const report = importMiaomiaowu(buf, { includeSynced: c.req.query('includeSynced') === '1' })
+    commit('nodes', undefined, '从妙妙屋迁移', before)
+    logReq(c, 'admin', 'migration', true, { detail: `妙妙屋：${report.subscriptions} 个订阅、${report.nodes} 个节点、${report.chains} 个链式节点` })
+    return c.json(report)
+  } catch (e: any) {
+    return c.json(bad(e.message), 400)
+  }
 })

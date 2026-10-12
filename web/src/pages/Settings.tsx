@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, Upload, CloudUpload, RotateCcw } from 'lucide-react'
 import { api, fmtBytes, fmtDate } from '../lib/api'
 import { useSettings, type SettingsView } from '../lib/hooks'
+import { SecurityCard } from '../components/Security'
+import { MigrateCard } from '../components/Migrate'
 import { Button, Card, CardHeader, Field, Input, Select, Spinner, ToggleRow, useConfirm, useToast } from '../components/ui'
 
 export default function SettingsPage() {
@@ -65,6 +67,9 @@ function SettingsForm({ initial }: { initial: SettingsView }) {
               </Field>
             )}
           </div>
+          <Field label="日志保留天数" hint="订阅拉取、登录与操作日志超过这个天数会自动清理">
+            <Input type="number" min={1} value={f.logRetentionDays} onChange={(e) => set('logRetentionDays', Number(e.target.value))} className="w-32" />
+          </Field>
           <ToggleRow
             label="规则集通过代理下载"
             hint="客户端经「🚀 节点选择」下载规则集，国内网络访问 GitHub 不稳定时建议开启"
@@ -77,6 +82,8 @@ function SettingsForm({ initial }: { initial: SettingsView }) {
       <CoreCard path={f.corePath} onChange={(v) => set('corePath', v)} />
       <S3Card f={f} setS3={setS3} save={save} />
       <LocalBackupCard />
+      <MigrateCard />
+      <SecurityCard />
       <PasswordCard />
     </div>
   )

@@ -160,3 +160,44 @@ describe('custom groups', () => {
     expect(sb.outbounds.find((o: any) => o.tag === '🤖 AI').outbounds).toEqual(['US gRPC', '🇭🇰 HK Reality'])
   })
 })
+
+describe('ios / stash formats', () => {
+  const nodes = mkNodes()
+  // Trojan 经由 SS 中转（Surge 支持 underlying-proxy）
+  nodes.push({ id: 'c9', name: 'Trojan via SS', proxy: nodes[9].proxy, source: { kind: 'chain', targetId: 'n9', relayId: 'n5' }, enabled: true, tags: [], createdAt: 0 })
+  const ctx: GenContext = { nodes, subscriptions: [], templates: [], customRules: [], settings }
+  const p = profile({ addFlags: false, modules: ['private', 'ai', 'cn', 'final'] })
+  it('surge', async () => {
+    const { generate } = await import('../src/core/generate.ts')
+    const r = generate(ctx, p, 'surge', { managedUrl: 'https://x/sub' })
+    expect(r.text.startsWith('#!MANAGED-CONFIG https://x/sub')).toBe(true)
+    expect(r.text).toContain('Trojan via SS = trojan, tj.example.com, 443, password="secret"')
+    expect(r.text).toMatch(/Trojan via SS = .*underlying-proxy=Tokyo SS/)
+    expect(r.text).toContain('RULE-SET,https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/OpenAI/OpenAI.list,🤖 AI 服务')
+    expect(r.text).toContain('GEOIP,CN,🎯 国内直连')
+    expect(r.text.trim().endsWith('FINAL,🐟 漏网之鱼,dns-failed')).toBe(true)
+    // Surge 不支持 VLESS
+    expect(r.text).not.toContain('= vless')
+    expect(r.warnings.join()).toContain('Surge 不支持 vless')
+  })
+  it('loon / qx skip chains and keep reality', async () => {
+    const { generate } = await import('../src/core/generate.ts')
+    const loon = generate(ctx, p, 'loon')
+    expect(loon.text).toMatch(/HK Reality = vless,1\.2\.3\.4,443,.*public-key="SbVK/)
+    expect(loon.warnings.join()).toContain('Loon 不支持链式代理')
+    const qx = generate(ctx, p, 'qx')
+    expect(qx.text).toContain('reality-base64-pubkey=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc')
+    expect(qx.text).toContain('final, 🐟 漏网之鱼')
+    const list = generate(ctx, p, 'qx', { listOnly: true })
+    expect(list.text.split('\n').filter(Boolean).every((l) => l.includes('tag='))).toBe(true)
+  })
+  it('stash', async () => {
+    const { generate } = await import('../src/core/generate.ts')
+    const y = YAML.parse(generate(ctx, p, 'stash').text)
+    const hy = y.proxies.find((x: any) => x.type === 'hysteria2' && x.name === 'SG Hy2')
+    expect(hy.auth).toBe('pass@word')
+    expect(hy.password).toBeUndefined()
+    expect(Object.values(y['rule-providers']).every((x: any) => x.format === 'text')).toBe(true)
+    expect(y.sniffer).toBeUndefined()
+  })
+})

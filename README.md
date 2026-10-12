@@ -1,8 +1,8 @@
 # Switch
 
-自托管的订阅聚合与转换工具：把**自建节点**和**外部（机场）订阅**放在一起管理，配置**链式代理**与**分流规则**，生成一个订阅链接导入 Clash / mihomo、sing-box、V2Ray 系客户端。
+自托管的订阅聚合与转换工具：把**自建节点**和**外部（机场）订阅**放在一起管理，配置**链式代理**与**分流规则**，生成一个订阅链接导入 Clash / mihomo、Stash、sing-box、Surge、Loon、Quantumult X、V2Ray 系客户端。
 
-- 单个 Docker 容器，数据存为一个 JSON 文件，无数据库依赖
+- 单个 Docker 容器，数据存为 JSON 文件，无数据库依赖；常驻内存约 80MB（1000 个节点时峰值约 100MB）
 - 简洁的 WebUI，支持手机端与深色模式
 - 生成的 Clash 配置与 sing-box 配置均通过 mihomo / sing-box 内核校验
 
@@ -54,6 +54,34 @@
 - 覆写 YAML：与生成的配置深度合并，修改端口、DNS、TUN 等任意字段
 - 预览生成结果，显示转换警告；记录最近的拉取记录（时间 / IP / UA）
 - 一键导入链接、二维码、链接泄露时可重置
+
+**多客户端格式**
+
+| 格式 | 说明 |
+|---|---|
+| Clash / mihomo | 完整配置，mrs 规则集，支持全部协议与链式代理 |
+| Stash | Clash 兼容格式，自动转换字段差异（Hysteria2 `auth`、TUIC v5 等），规则集改用文本格式 |
+| sing-box | 1.12+ 格式，srs 规则集，链式代理用 `detour` |
+| Surge | 完整托管配置（`#!MANAGED-CONFIG` 自动更新），链式代理用 `underlying-proxy`；不支持 VLESS |
+| Loon | 完整配置，支持 VLESS Reality / Hysteria2；不支持 TUIC、链式代理 |
+| Quantumult X | 完整配置，支持 VLESS Reality；不支持 Hysteria2 / TUIC、链式代理 |
+| V2Ray | Base64 分享链接（v2rayN / v2rayNG / Shadowrocket / NekoBox） |
+
+Surge / Loon / QX 的分流规则使用 [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script) 中对应客户端格式的规则集。只要节点不要规则时，在链接后加 `&list=1`。客户端不支持的节点会跳过，并在「预览配置」里列出原因。
+
+**安全与审计**
+- 两步验证（TOTP，兼容 Google Authenticator / 1Password / Bitwarden 等）+ 8 个一次性恢复码
+- 通行密钥（Passkey）：指纹 / 面容 / 安全密钥直接登录（需要 HTTPS）
+- 登录失败 10 次封禁该 IP 10 分钟
+- **日志**：谁拉取了订阅（IP、客户端、格式、被拒绝原因、无效链接的访问）、谁登录了面板（成功 / 失败 / 两步验证失败 / 通行密钥）、敏感操作（改密码、恢复备份、重置链接等）；24 小时统计；可设置保留天数
+
+**历史版本**
+- 输出配置、自定义规则、规则模板、自建 / 链式节点每次修改自动保存版本，2 分钟内的连续修改合并
+- 查看与当前内容的差异，一键恢复（恢复前的内容也会保存，可以再恢复回来；订阅链接保持不变）
+
+**迁移**
+- 从 **Sub-Store** 备份导入：远程订阅 → 订阅源，本地订阅 → 节点，组合订阅 → 输出配置
+- 从 **妙妙屋（miaomiaowu）** 的 `traffic.db` 导入：节点、链式代理、外部订阅
 
 **备份**
 - S3 兼容对象存储（AWS S3 / Cloudflare R2 / MinIO / 阿里云 OSS / 腾讯云 COS / Backblaze B2 …）定时备份、保留份数、一键恢复
@@ -182,11 +210,21 @@ server {
 
 ## 客户端识别
 
+同一个链接按 UA 返回对应格式，也可以用 `?target=` 指定（`clash` `stash` `singbox` `surge` `loon` `qx` `v2ray`）：
+
 | UA 包含 | 返回格式 |
 |---|---|
-| clash / mihomo / stash / verge / flclash / nyanpasu / hiddify | Clash YAML |
+| stash | Stash |
+| surge | Surge |
+| loon | Loon |
+| quantumult | Quantumult X |
 | sing-box / SFA / SFI / SFM | sing-box JSON（1.12+ 格式） |
+| clash / mihomo / verge / flclash / nyanpasu / hiddify | Clash YAML |
 | 其他（v2rayN / v2rayNG / Shadowrocket / NekoBox …） | Base64 分享链接 |
+
+## 资源占用
+
+实测（Node 22，节点数 23 / 1000）：空闲约 78MB；1000 个节点连续生成 90 次订阅后约 100MB（Docker 镜像默认用 `--max-old-space-size=128` 限制 V8 堆，不加限制时峰值会到 200MB 左右，但速度相同）。1000 个节点生成一次 Clash 配置约 80ms。真实测速 / 解锁检测时会临时启动一个 mihomo 进程，结束后退出。
 
 ## 开发
 

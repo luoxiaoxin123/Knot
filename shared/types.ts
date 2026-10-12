@@ -278,11 +278,33 @@ export interface Settings {
   s3: S3Config
   /** mihomo 内核路径（真实测速 / 解锁检测），留空自动查找 */
   corePath: string
+  /** 日志保留天数 */
+  logRetentionDays: number
+}
+
+export interface Passkey {
+  /** credential id（base64url） */
+  id: string
+  /** 公钥（base64url） */
+  publicKey: string
+  counter: number
+  transports?: string[]
+  name: string
+  rpID: string
+  createdAt: number
+  lastUsedAt?: number
+}
+
+export interface AuthData {
+  passwordHash?: string
+  secret: string
+  totp?: { secret: string; enabled: boolean; lastStep?: number; recoveryHashes: string[] }
+  passkeys?: Passkey[]
 }
 
 export interface DbData {
   version: number
-  auth: { passwordHash?: string; secret: string }
+  auth: AuthData
   settings: Settings
   nodes: Node[]
   subscriptions: Subscription[]
@@ -302,4 +324,23 @@ export interface RuleModuleInfo {
   defaultPolicy: 'proxy' | 'direct' | 'reject'
 }
 
-export type OutputTarget = 'clash' | 'singbox' | 'v2ray'
+export type OutputTarget = 'clash' | 'stash' | 'singbox' | 'surge' | 'loon' | 'qx' | 'v2ray'
+
+// ---------------- 日志 ----------------
+
+export type LogType = 'sub' | 'login' | 'admin'
+
+export interface LogEntry {
+  id: string
+  at: number
+  type: LogType
+  /** sub: profile / short / share；login: password / passkey / logout；admin: 具体操作 */
+  action: string
+  ok: boolean
+  ip: string
+  ua?: string
+  /** 订阅格式 / 操作对象 */
+  target?: string
+  /** 名称、失败原因等 */
+  detail?: string
+}

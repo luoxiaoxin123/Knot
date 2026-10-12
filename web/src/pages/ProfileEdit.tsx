@@ -359,7 +359,7 @@ function NodePicker({ value, onChange }: { value: string[]; onChange: (v: string
 }
 
 function PreviewModal({ profile, onClose }: { profile: Profile; onClose: () => void }) {
-  const [target, setTarget] = useState<'clash' | 'singbox' | 'v2ray'>('clash')
+  const [target, setTarget] = useState<'clash' | 'stash' | 'singbox' | 'surge' | 'loon' | 'qx' | 'v2ray'>('clash')
   const [data, setData] = useState<{ text: string; warnings: string[]; nodeCount: number } | null>(null)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -374,7 +374,15 @@ function PreviewModal({ profile, onClose }: { profile: Profile; onClose: () => v
     <Modal open onClose={onClose} title="预览配置（未保存的修改也会体现）" width="max-w-4xl">
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Segmented value={target} onChange={setTarget} options={[{ value: 'clash', label: 'Clash' }, { value: 'singbox', label: 'sing-box' }, { value: 'v2ray', label: 'V2Ray' }]} />
+          <Segmented value={target} onChange={setTarget} options={[
+              { value: 'clash', label: 'Clash' },
+              { value: 'stash', label: 'Stash' },
+              { value: 'singbox', label: 'sing-box' },
+              { value: 'surge', label: 'Surge' },
+              { value: 'loon', label: 'Loon' },
+              { value: 'qx', label: 'QX' },
+              { value: 'v2ray', label: 'V2Ray' },
+            ]} />
           {data && <CopyButton text={data.text} label="复制" />}
         </div>
         {error && <div className="text-sm text-red-600">{error}</div>}
@@ -386,7 +394,7 @@ function PreviewModal({ profile, onClose }: { profile: Profile; onClose: () => v
                 {data.warnings.map((w, i) => <li key={i}>• {w}</li>)}
               </ul>
             )}
-            <CodeEditor value={data.text} readOnly height="60vh" lang={target === 'singbox' ? 'json' : target === 'clash' ? 'yaml' : 'text'} />
+            <CodeEditor value={data.text} readOnly height="60vh" lang={target === 'singbox' ? 'json' : target === 'clash' || target === 'stash' ? 'yaml' : 'text'} />
           </>
         )}
       </div>

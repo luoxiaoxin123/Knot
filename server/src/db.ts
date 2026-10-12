@@ -28,6 +28,7 @@ export function defaultSettings(): Settings {
       keep: 14,
     },
     corePath: '',
+    logRetentionDays: 90,
   }
 }
 

@@ -1,5 +1,7 @@
 import YAML from 'yaml'
-import type { CustomGroup, CustomRule, Node, Profile, Proxy, RuleTemplate, Settings, Subscription } from '../../../shared/types.ts'
+import type { CustomGroup, CustomRule, Node, OutputTarget, Profile, Proxy, RuleTemplate, Settings, Subscription } from '../../../shared/types.ts'
+import { generateIos, type IosOptions } from './ios.ts'
+import { stashTransform } from './stash.ts'
 import { applyCustomGroups, applyCustomGroupsSingbox, groupsToCustom } from './custom-groups.ts'
 import { AUTO_GROUP, PROXY_GROUP, geoUrl, normalizeModules, type RuleModule } from './rules/modules.ts'
 import { parseIni } from './rules/ini.ts'
@@ -534,7 +536,17 @@ export function draftCustomGroups(ctx: GenContext, profile: Profile): CustomGrou
   return groupsToCustom(parts.groups, resolved)
 }
 
-export function generateClash(ctx: GenContext, profile: Profile): GenResult {
+export interface ClashStructure {
+  resolved: ResolvedProxies
+  config: any
+  groups: any[]
+  rules: string[]
+  providers: Record<string, any>
+  warnings: string[]
+}
+
+/** 节点 + 分组 + 规则（Clash 结构），供 Clash / Stash / Surge / Loon / QX 共用 */
+export function clashStructure(ctx: GenContext, profile: Profile): ClashStructure {
   const resolved = resolveProxies(ctx, profile)
   const warnings = [...resolved.warnings]
   if (!resolved.visible.length) warnings.push('没有可用节点')
@@ -551,6 +563,14 @@ export function generateClash(ctx: GenContext, profile: Profile): GenResult {
   for (const p of Object.values(providers)) {
     if (p && p.proxy && !finalGroupNames.has(p.proxy) && !BUILTIN_POLICIES.has(p.proxy)) delete p.proxy
   }
+  return { resolved, config, groups, rules, providers, warnings }
+}
+
+export function generateClash(ctx: GenContext, profile: Profile, transform?: (st: ClashStructure) => void): GenResult {
+  const st = clashStructure(ctx, profile)
+  transform?.(st)
+  let { config } = st
+  const { resolved, groups, rules, providers, warnings } = st
 
   config.proxies = resolved.proxies
   config['proxy-groups'] = groups
@@ -847,10 +867,21 @@ export function generateSingbox(ctx: GenContext, profile: Profile): GenResult {
   return { text: JSON.stringify(config, null, 2), warnings, contentType: 'application/json; charset=utf-8' }
 }
 
-export function generate(ctx: GenContext, profile: Profile, target: 'clash' | 'singbox' | 'v2ray'): GenResult {
-  if (target === 'singbox') return generateSingbox(ctx, profile)
-  if (target === 'v2ray') return generateV2ray(ctx, profile)
-  return generateClash(ctx, profile)
+export function generate(ctx: GenContext, profile: Profile, target: OutputTarget, opts: IosOptions = {}): GenResult {
+  switch (target) {
+    case 'singbox':
+      return generateSingbox(ctx, profile)
+    case 'v2ray':
+      return generateV2ray(ctx, profile)
+    case 'stash':
+      return generateClash(ctx, profile, stashTransform)
+    case 'surge':
+    case 'loon':
+    case 'qx':
+      return generateIos(ctx, profile, target, opts)
+    default:
+      return generateClash(ctx, profile)
+  }
 }
 
 /** 前端用：某个输出配置里可用的策略名 */
