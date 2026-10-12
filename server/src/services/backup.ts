@@ -1,5 +1,5 @@
 import type { DbData } from '../../../shared/types.ts'
-import { db, defaultSettings } from '../db.ts'
+import { db, defaultSettings, migrate } from '../db.ts'
 import { s3Delete, s3List, s3Put, s3Get } from './s3.ts'
 
 export interface BackupFile {
@@ -24,6 +24,7 @@ export function exportBackup(): BackupFile {
       profiles: d.profiles,
       customRules: d.customRules,
       templates: d.templates,
+      shares: d.shares,
     },
   }
 }
@@ -38,6 +39,8 @@ export function importBackup(raw: any) {
   db.data.profiles = b.profiles
   db.data.customRules = b.customRules || []
   db.data.templates = b.templates || []
+  db.data.shares = b.shares || []
+  migrate(db.data)
   db.flush()
 }
 

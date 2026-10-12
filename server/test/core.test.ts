@@ -129,3 +129,34 @@ rule-providers:
     expect(() => yamlToRules('head:\n  - FOO,bar,DIRECT', [], gen)).toThrow()
   })
 })
+
+describe('custom groups', () => {
+  const nodes = mkNodes()
+  const ctx: GenContext = { nodes, subscriptions: [], templates: [], customRules: [], settings }
+  it('replaces groups, renames targets, adds new nodes and fills missing groups', async () => {
+    const { draftCustomGroups } = await import('../src/core/generate.ts')
+    const base = profile({ addFlags: false, regionGroups: false, modules: ['ai', 'gfw', 'cn', 'final'] })
+    const draft = draftCustomGroups(ctx, base)
+    expect(draft.map((g) => g.name)).toEqual(['🚀 节点选择', '♻️ 自动选择', '🤖 AI 服务', '🎯 国内直连', '🐟 漏网之鱼'])
+    expect(draft[0].members).toContain('node:n0')
+    expect(draft[0].autoNew).toBe(true)
+    // 编辑：AI 改名并只保留两个节点，删除「国内直连」，known 不包含 n13（模拟新节点）
+    const ai = { ...draft[2], name: '🤖 AI', members: ['node:n2', 'node:n0'], autoNew: false }
+    const groups = [draft[0], draft[1], ai, draft[4], { id: 'x', name: '我的组', type: 'url-test' as const, members: ['node:n1'], autoNew: true, filter: 'VMess' }]
+    const known = nodes.filter((n) => n.id !== 'n13').map((n) => n.id)
+    const p = { ...base, groupMode: 'custom' as const, customGroups: groups, knownNodeIds: known }
+    const r = generateClash(ctx, p)
+    const y = YAML.parse(r.text)
+    const g = (name: string) => y['proxy-groups'].find((x: any) => x.name === name)
+    expect(g('🤖 AI').proxies).toEqual(['US gRPC', '🇭🇰 HK Reality'])
+    expect(g('我的组').proxies).toEqual(['JP WS', '台湾 VMess'])
+    expect(y.rules.some((x: string) => x.endsWith(',🤖 AI'))).toBe(true)
+    expect(y.rules.some((x: string) => x.endsWith(',🤖 AI 服务'))).toBe(false)
+    expect(g('🎯 国内直连')).toBeTruthy()
+    expect(r.warnings.join()).toContain('国内直连')
+    const sb = JSON.parse(generateSingbox(ctx, p).text)
+    const tags = new Set(sb.outbounds.map((o: any) => o.tag))
+    for (const rule of sb.route.rules) if (rule.outbound) expect(tags.has(rule.outbound)).toBe(true)
+    expect(sb.outbounds.find((o: any) => o.tag === '🤖 AI').outbounds).toEqual(['US gRPC', '🇭🇰 HK Reality'])
+  })
+})

@@ -1,13 +1,12 @@
 import { Hono } from 'hono'
 import YAML from 'yaml'
 import { randomBytes } from 'node:crypto'
-import type { CustomRule, Node, Profile, RuleTemplate, Subscription } from '../../shared/types.ts'
+import type { AccessControl, CustomGroup, CustomRule, Node, Profile, RuleTemplate, Share, Subscription } from '../../shared/types.ts'
 import { RULE_TYPES } from '../../shared/types.ts'
-import { db, newProfile } from './db.ts'
+import { db, defaultAccess, newProfile } from './db.ts'
 import {
   clearFailures,
   clearSession,
-  clientIp,
   hashPassword,
   isAuthed,
   issueSession,
@@ -16,11 +15,14 @@ import {
   requireAuth,
   verifyPassword,
 } from './auth.ts'
+import { clientIp, validateAllowlist } from './access.ts'
 import { parseSubscription } from './core/sub-parse.ts'
 import { toUri } from './core/uri-emit.ts'
 import { uid } from './core/util.ts'
 import { MODULES, MODULE_PRESETS } from './core/rules/modules.ts'
-import { generate, policyOptions, resolveProxies, type GenContext } from './core/generate.ts'
+import { draftCustomGroups, generate, policyOptions, resolveProxies } from './core/generate.ts'
+import { genCtx } from './ctx.ts'
+import { checkNodes, coreVersion, findCore } from './services/core.ts'
 import { DEFAULT_EXCLUDE, DEFAULT_SUB_UA, refreshSubscription, refreshTemplate } from './services/subscription.ts'
 import { testNodes } from './services/latency.ts'
 import { backupToS3, exportBackup, importBackup, listS3Backups, restoreFromS3 } from './services/backup.ts'
@@ -28,10 +30,6 @@ import { s3List } from './services/s3.ts'
 
 export const api = new Hono()
 
-export function genCtx(): GenContext {
-  const d = db.data
-  return { nodes: d.nodes, subscriptions: d.subscriptions, templates: d.templates, customRules: d.customRules, settings: d.settings }
-}
 
 const bad = (msg: string) => ({ error: msg })
 
@@ -235,6 +233,22 @@ api.post('/nodes/test', async (c) => {
   const results = await testNodes(list, byId)
   db.save()
   return c.json(results)
+})
+
+api.get('/core/status', async (c) => {
+  const path = findCore()
+  return c.json({ available: !!path, path, version: path ? await coreVersion(path) : '' })
+})
+
+/** 内核真实延迟测试；unlock=true 时同时检测出口 IP 与 AI / 流媒体解锁 */
+api.post('/nodes/check', async (c) => {
+  const { ids, unlock } = await c.req.json()
+  const list: string[] = Array.isArray(ids) && ids.length ? ids : db.data.nodes.filter((n) => n.enabled).map((n) => n.id)
+  try {
+    return c.json(await checkNodes(list, { unlock: !!unlock }))
+  } catch (e: any) {
+    return c.json(bad(e.message), 400)
+  }
 })
 
 // ------------------------------- 订阅源 -------------------------------
@@ -479,10 +493,79 @@ const PROFILE_FIELDS: (keyof Profile)[] = [
   'addFlags',
   'trafficInfo',
   'overrideYaml',
+  'groupMode',
+  'knownNodeIds',
 ]
+
+/** 校验并写入访问控制设置 */
+function patchAccess(ac: AccessControl, b: any): string | null {
+  if (!b || typeof b !== 'object') return null
+  if (b.ipAllowlist !== undefined) {
+    const list = (Array.isArray(b.ipAllowlist) ? b.ipAllowlist : String(b.ipAllowlist).split(/[\s,，]+/))
+      .map((x: any) => String(x).trim())
+      .filter(Boolean)
+    const err = validateAllowlist(list)
+    if (err) return err
+    ac.ipAllowlist = list
+  }
+  if (typeof b.enabled === 'boolean') ac.enabled = b.enabled
+  for (const k of ['expiresAt', 'maxUses', 'rateLimitPerHour'] as const) {
+    if (b[k] !== undefined) ac[k] = Math.max(0, Math.floor(Number(b[k]) || 0))
+  }
+  // 计数只允许清零，避免编辑期间客户端拉取导致的计数被旧值覆盖
+  if (b.uses === 0) ac.uses = 0
+  return null
+}
+
+function sanitizeGroups(list: any): CustomGroup[] | string {
+  if (!Array.isArray(list)) return '分组格式错误'
+  const names = new Set<string>()
+  const out: CustomGroup[] = []
+  for (const g of list) {
+    const name = String(g?.name || '').trim()
+    if (!name) return '分组名不能为空'
+    if (names.has(name)) return `分组名重复：${name}`
+    if (['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'GLOBAL'].includes(name)) return `分组名不能是 ${name}`
+    names.add(name)
+    out.push({
+      id: String(g.id || uid()),
+      name,
+      type: ['select', 'url-test', 'fallback', 'load-balance'].includes(g.type) ? g.type : 'select',
+      members: Array.isArray(g.members) ? [...new Set<string>(g.members.map(String))] : [],
+      autoNew: !!g.autoNew,
+      filter: String(g.filter || ''),
+      origin: g.origin ? String(g.origin) : undefined,
+    })
+  }
+  // 检查分组之间的循环引用
+  const byName = new Map(out.map((g) => [g.name, g]))
+  const visit = (g: CustomGroup, stack: string[]): string | null => {
+    if (stack.includes(g.name)) return `分组循环引用：${[...stack, g.name].join(' → ')}`
+    for (const m of g.members) {
+      const child = byName.get(m)
+      if (child) {
+        const e = visit(child, [...stack, g.name])
+        if (e) return e
+      }
+    }
+    return null
+  }
+  for (const g of out) {
+    const e = visit(g, [])
+    if (e) return e
+  }
+  return out
+}
 
 function profilePatch(p: Profile, b: any): string | null {
   for (const k of PROFILE_FIELDS) if (b[k] !== undefined) (p as any)[k] = b[k]
+  if (b.customGroups !== undefined) {
+    const g = sanitizeGroups(b.customGroups)
+    if (typeof g === 'string') return g
+    p.customGroups = g
+  }
+  const err = patchAccess(p.accessControl, b.accessControl)
+  if (err) return err
   if (p.overrideYaml?.trim()) {
     try {
       YAML.parse(p.overrideYaml)
@@ -522,10 +605,60 @@ api.post('/profiles/:id/reset-token', (c) => {
   return c.json(p)
 })
 
+// 短链：/x/<code>
+const SHORT_ALPHABET = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+function randomCode(len = 8) {
+  const bytes = randomBytes(len)
+  return Array.from(bytes, (b) => SHORT_ALPHABET[b % SHORT_ALPHABET.length]).join('')
+}
+
+api.post('/profiles/:id/short', async (c) => {
+  const p = db.data.profiles.find((x) => x.id === c.req.param('id'))
+  if (!p) return c.json(bad('配置不存在'), 404)
+  const { code } = await c.req.json().catch(() => ({}))
+  let next: string
+  if (code) {
+    next = String(code).trim()
+    if (!/^[A-Za-z0-9_-]{4,32}$/.test(next)) return c.json(bad('短链只能包含字母、数字、- 和 _，长度 4-32'), 400)
+    if (db.data.profiles.some((x) => x.id !== p.id && x.shortCode === next)) return c.json(bad('该短链已被占用'), 400)
+  } else {
+    do next = randomCode()
+    while (db.data.profiles.some((x) => x.shortCode === next))
+  }
+  p.shortCode = next
+  db.save()
+  return c.json(p)
+})
+
+api.delete('/profiles/:id/short', (c) => {
+  const p = db.data.profiles.find((x) => x.id === c.req.param('id'))
+  if (!p) return c.json(bad('配置不存在'), 404)
+  p.shortCode = undefined
+  db.save()
+  return c.json(p)
+})
+
 api.delete('/profiles/:id', (c) => {
   db.data.profiles = db.data.profiles.filter((p) => p.id !== c.req.param('id'))
   db.save()
   return c.json({ ok: true })
+})
+
+/** 拖拽编辑器：自动生成的分组（作为初始数据）与可用节点 */
+api.post('/profiles/groups-draft', async (c) => {
+  const { profile } = await c.req.json()
+  const base = db.data.profiles.find((x) => x.id === profile?.id) || newProfile('预览')
+  const p: Profile = { ...base, ...profile }
+  const ctx = genCtx()
+  const resolved = resolveProxies(ctx, p)
+  const byId = new Map(db.data.nodes.map((n) => [n.id, n]))
+  const idOf = new Map([...resolved.nameOf].map(([id, name]) => [name, id]))
+  const nodes = resolved.visible.map((name) => {
+    const n = byId.get(idOf.get(name)!)!
+    const target = n.source.kind === 'chain' ? byId.get(n.source.targetId) : n
+    return { id: n.id, name, type: target?.proxy.type || n.proxy.type, source: n.source }
+  })
+  return c.json({ draft: draftCustomGroups(ctx, p), nodes })
 })
 
 /** 预览：可传入未保存的配置 */
@@ -551,7 +684,7 @@ api.get('/settings', (c) => c.json(settingsView()))
 api.put('/settings', async (c) => {
   const b = await c.req.json()
   const s = db.data.settings
-  for (const k of ['publicUrl', 'ruleMirror', 'ruleMirrorCustom', 'ruleDownloadViaProxy', 'testUrl'] as const) {
+  for (const k of ['publicUrl', 'ruleMirror', 'ruleMirrorCustom', 'ruleDownloadViaProxy', 'testUrl', 'corePath'] as const) {
     if (b[k] !== undefined) (s as any)[k] = b[k]
   }
   s.publicUrl = s.publicUrl.trim().replace(/\/+$/, '')
@@ -615,4 +748,47 @@ api.post('/backup/s3/restore', async (c) => {
   } catch (e: any) {
     return c.json(bad(e.message), 400)
   }
+})
+
+// ------------------------------- 临时分享 -------------------------------
+
+api.get('/shares', (c) => c.json(db.data.shares))
+
+api.post('/shares', async (c) => {
+  const b = await c.req.json()
+  const ids = new Set(db.data.nodes.map((n) => n.id))
+  const nodeIds = (Array.isArray(b.nodeIds) ? b.nodeIds : []).filter((id: string) => ids.has(id))
+  if (!nodeIds.length) return c.json(bad('请选择要分享的节点'), 400)
+  const s: Share = {
+    id: uid(),
+    name: String(b.name || '').trim() || '临时分享',
+    token: randomBytes(16).toString('hex'),
+    nodeIds,
+    withRules: b.withRules !== false,
+    accessControl: defaultAccess(),
+    createdAt: Date.now(),
+  }
+  const err = patchAccess(s.accessControl, b.accessControl)
+  if (err) return c.json(bad(err), 400)
+  db.data.shares.unshift(s)
+  db.save()
+  return c.json(s)
+})
+
+api.put('/shares/:id', async (c) => {
+  const s = db.data.shares.find((x) => x.id === c.req.param('id'))
+  if (!s) return c.json(bad('分享不存在'), 404)
+  const b = await c.req.json()
+  if (typeof b.name === 'string') s.name = b.name.trim() || s.name
+  if (typeof b.withRules === 'boolean') s.withRules = b.withRules
+  const err = patchAccess(s.accessControl, b.accessControl)
+  if (err) return c.json(bad(err), 400)
+  db.save()
+  return c.json(s)
+})
+
+api.delete('/shares/:id', (c) => {
+  db.data.shares = db.data.shares.filter((s) => s.id !== c.req.param('id'))
+  db.save()
+  return c.json({ ok: true })
 })

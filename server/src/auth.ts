@@ -62,16 +62,6 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
 // 简单的登录失败限流：每个 IP 10 分钟内最多 10 次
 const failures = new Map<string, { n: number; until: number }>()
 
-export function clientIp(c: Context): string {
-  return (
-    c.req.header('cf-connecting-ip') ||
-    c.req.header('x-real-ip') ||
-    c.req.header('x-forwarded-for')?.split(',')[0].trim() ||
-    (c.env as any)?.incoming?.socket?.remoteAddress ||
-    'unknown'
-  )
-}
-
 export function loginBlocked(ip: string): boolean {
   const f = failures.get(ip)
   return !!f && f.n >= 10 && f.until > Date.now()

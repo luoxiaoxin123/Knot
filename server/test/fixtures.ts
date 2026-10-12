@@ -24,13 +24,16 @@ export const settings: Settings = {
   ruleDownloadViaProxy: true,
   testUrl: 'https://www.gstatic.com/generate_204',
   s3: { enabled: false, endpoint: '', region: 'auto', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: 'switch/', pathStyle: false, intervalHours: 0, keep: 10 },
+  corePath: '',
 }
 
 export function profile(p: Partial<Profile> = {}): Profile {
   return {
     id: 'p1', name: '测试', token: 't', nodeMode: 'all', sources: [], nodeIds: [], includeRegex: '', excludeRegex: '',
     ruleMode: 'modules', modules: ['private', 'ads', 'ai', 'telegram', 'youtube', 'google', 'github', 'twitter', 'netflix', 'microsoft', 'apple', 'gfw', 'cn', 'final'],
-    useCustomRules: true, regionGroups: true, groupsIncludeNodes: true, addFlags: true, trafficInfo: false, overrideYaml: '', createdAt: 0, ...p,
+    useCustomRules: true, regionGroups: true, groupsIncludeNodes: true, addFlags: true, trafficInfo: false, overrideYaml: '', createdAt: 0,
+    groupMode: 'auto', customGroups: [], knownNodeIds: [],
+    accessControl: { enabled: true, expiresAt: 0, maxUses: 0, uses: 0, rateLimitPerHour: 0, ipAllowlist: [] }, ...p,
   }
 }
 export type { DbData }

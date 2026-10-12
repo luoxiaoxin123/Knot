@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { Node, Profile, CustomRule, RuleTemplate, Settings, Subscription } from '@shared/types'
+import type { Node, Profile, CustomRule, RuleTemplate, Settings, Share, Subscription } from '@shared/types'
 import { api } from './api'
 
 export type NodeView = Node & { uri: string | null }
@@ -20,6 +20,7 @@ export const useProfiles = () => useQuery({ queryKey: ['profiles'], queryFn: () 
 export const useCustomRules = () => useQuery({ queryKey: ['customRules'], queryFn: () => api.get<CustomRule[]>('/rules/custom') })
 export const useTemplates = () => useQuery({ queryKey: ['templates'], queryFn: () => api.get<RuleTemplate[]>('/templates') })
 export const useRulesMeta = () => useQuery({ queryKey: ['rulesMeta'], queryFn: () => api.get<RulesMeta>('/rules/meta'), staleTime: Infinity })
+export const useShares = () => useQuery({ queryKey: ['shares'], queryFn: () => api.get<Share[]>('/shares') })
 export const useSettings = () => useQuery({ queryKey: ['settings'], queryFn: () => api.get<SettingsView>('/settings') })
 
 /** 订阅链接的对外地址 */

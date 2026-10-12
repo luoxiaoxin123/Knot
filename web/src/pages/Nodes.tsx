@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { CheckCells } from '../components/CheckBadges'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link2, Pencil, Trash2, Plus, Gauge, Search, Copy, Server, ArrowRight, QrCode } from 'lucide-react'
+import { Link2, Pencil, Trash2, Plus, Gauge, Search, Copy, Server, ArrowRight, QrCode, Send, ScanSearch } from 'lucide-react'
 import YAML from 'yaml'
 import type { Subscription } from '@shared/types'
 import { api, copyText } from '../lib/api'
-import { useNodes, useSubs, type NodeView } from '../lib/hooks'
+import { subBase, useNodes, useSettings, useSubs, type NodeView } from '../lib/hooks'
 import {
   Badge,
   Button,
@@ -27,6 +29,7 @@ import {
 } from '../components/ui'
 import { CodeEditor } from '../components/CodeEditor'
 import { QrModal } from '../components/Qr'
+import { ShareModal } from '../components/ShareModal'
 
 const TYPE_COLOR: Record<string, BadgeColor> = {
   vless: 'blue',
@@ -71,9 +74,10 @@ function transportOf(n: NodeView): string | null {
 
 function Latency({ n }: { n: NodeView }) {
   if (n.latency === undefined) return <span className="text-zinc-400">—</span>
-  if (n.latency < 0) return <span className="text-red-500">超时</span>
+  const title = `${n.latencyKind === 'real' ? '内核真实延迟' : 'TCP 握手延迟'}${n.latencyAt ? ` · ${new Date(n.latencyAt).toLocaleString()}` : ''}`
+  if (n.latency < 0) return <span className="text-red-500" title={n.check?.error ? `${title}\n${n.check.error}` : title}>不可用</span>
   const c = n.latency < 200 ? 'text-emerald-600' : n.latency < 500 ? 'text-amber-600' : 'text-red-500'
-  return <span className={cx('tabular-nums', c)}>{n.latency} ms</span>
+  return <span className={cx('tabular-nums', c)} title={title}>{n.latency} ms</span>
 }
 
 export function TypeBadge({ type }: { type: string }) {
@@ -96,6 +100,8 @@ export default function NodesPage() {
   const [chainFor, setChainFor] = useState<NodeView | null>(null)
   const [qr, setQr] = useState<{ title: string; text: string } | null>(null)
   const [testing, setTesting] = useState(false)
+  const [sharing, setSharing] = useState<string[] | null>(null)
+  const { data: settings } = useSettings()
 
   const byId = useMemo(() => new Map((nodes || []).map((n) => [n.id, n])), [nodes])
   const subMap = useMemo(() => new Map((subs || []).map((s) => [s.id, s])), [subs])
@@ -126,15 +132,35 @@ export default function NodesPage() {
     setSelected(s)
   }
 
+  const core = useQuery({ queryKey: ['core'], queryFn: () => api.get<{ available: boolean; version: string }>('/core/status'), staleTime: Infinity })
+  const hasCore = !!core.data?.available
+  const [checking, setChecking] = useState(false)
+
+  /** 有内核时用内核测真实延迟（支持 UDP 协议与链式），否则 TCP 握手 */
   const runTest = async (ids: string[]) => {
     setTesting(true)
     try {
-      await api.post('/nodes/test', { ids })
+      if (hasCore) await api.post('/nodes/check', { ids, unlock: false })
+      else await api.post('/nodes/test', { ids })
       await refresh()
     } catch (e: any) {
       toast(e.message, 'error')
     } finally {
       setTesting(false)
+    }
+  }
+
+  const runUnlock = async (ids: string[]) => {
+    setChecking(true)
+    toast(`正在检测 ${ids.length} 个节点的出口与解锁情况…`, 'info')
+    try {
+      await api.post('/nodes/check', { ids, unlock: true })
+      await refresh()
+      toast('检测完成')
+    } catch (e: any) {
+      toast(e.message, 'error')
+    } finally {
+      setChecking(false)
     }
   }
 
@@ -199,10 +225,16 @@ export default function NodesPage() {
         desc="自建节点、外部订阅节点与链式代理节点"
         actions={
           <>
-            <Button onClick={() => runTest(list.map((n) => n.id))} loading={testing} disabled={!list.length}>
+            <Button onClick={() => runTest(list.map((n) => n.id))} loading={testing} disabled={!list.length} title={hasCore ? '使用 mihomo 内核测试真实延迟' : '未检测到 mihomo 内核，使用 TCP 握手延迟'}>
               <Gauge className="size-4" />
-              测速
+              {hasCore ? '测速' : 'TCP 测速'}
             </Button>
+            {hasCore && (
+              <Button onClick={() => runUnlock(list.filter((n) => n.enabled).map((n) => n.id))} loading={checking} disabled={!list.length} title="检测出口 IP 与 ChatGPT / Claude / Gemini / Netflix / YouTube 解锁">
+                <ScanSearch className="size-4" />
+                解锁检测
+              </Button>
+            )}
             <Button variant="primary" onClick={() => setImportOpen(true)}>
               <Plus className="size-4" />
               添加节点
@@ -241,11 +273,13 @@ export default function NodesPage() {
           <Button size="sm" onClick={() => batch('enable')}>启用</Button>
           <Button size="sm" onClick={() => batch('disable')}>停用</Button>
           <Button size="sm" onClick={() => runTest([...selected])} loading={testing}>测速</Button>
+          {hasCore && <Button size="sm" onClick={() => runUnlock([...selected])} loading={checking}>解锁检测</Button>}
           <Button size="sm" onClick={async () => {
             const uris = [...selected].map((id) => byId.get(id)?.uri).filter(Boolean)
             await copyText(uris.join('\n'))
             toast(`已复制 ${uris.length} 条分享链接`)
           }}>复制链接</Button>
+          <Button size="sm" onClick={() => setSharing([...selected])}><Send className="size-3.5" />临时分享</Button>
           <Button size="sm" variant="danger" onClick={() => batch('delete')}>删除</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>取消选择</Button>
         </div>
@@ -268,9 +302,10 @@ export default function NodesPage() {
                 <tr className="border-b border-zinc-200 bg-zinc-50 text-left text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/60">
                   <th className="w-10 px-3 py-2"><Checkbox checked={allSelected} indeterminate={someSelected && !allSelected} onChange={toggleAll} /></th>
                   <th className="px-2 py-2 font-medium">名称</th>
-                  <th className="hidden px-2 py-2 font-medium lg:table-cell">地址</th>
-                  <th className="hidden px-2 py-2 font-medium sm:table-cell">来源</th>
-                  <th className="hidden px-2 py-2 text-right font-medium sm:table-cell">延迟</th>
+                  <th className="hidden px-2 py-2 font-medium 2xl:table-cell">地址</th>
+                  <th className="hidden whitespace-nowrap px-2 py-2 font-medium sm:table-cell">来源</th>
+                  <th className="hidden whitespace-nowrap px-2 py-2 font-medium xl:table-cell">出口 / 解锁</th>
+                  <th className="hidden whitespace-nowrap px-2 py-2 text-right font-medium sm:table-cell">延迟</th>
                   <th className="px-2 py-2 text-right font-medium">操作</th>
                 </tr>
               </thead>
@@ -288,6 +323,7 @@ export default function NodesPage() {
                     onDelete={() => remove(n)}
                     onEnabled={(v) => setEnabled(n, v)}
                     onQr={() => n.uri && setQr({ title: n.name, text: n.uri })}
+                    onShare={() => setSharing([n.id])}
                     onCopy={async () => {
                       if (!n.uri) return toast('该节点无法生成分享链接', 'error')
                       await copyText(n.uri)
@@ -305,6 +341,14 @@ export default function NodesPage() {
       {editing && <EditModal node={editing} nodes={nodes || []} onClose={() => setEditing(null)} onDone={refresh} />}
       {chainFor && <ChainModal target={chainFor} nodes={nodes || []} subMap={subMap} onClose={() => setChainFor(null)} onDone={refresh} />}
       <QrModal open={!!qr} onClose={() => setQr(null)} title={qr?.title || ''} text={qr?.text || ''} />
+      {sharing && (
+        <ShareModal
+          nodeIds={sharing}
+          nodeNames={sharing.map((id) => byId.get(id)?.name || id)}
+          onClose={() => setSharing(null)}
+          onCreated={(s) => setQr({ title: `分享链接已生成 · ${s.name}`, text: `${subBase(settings)}/s/${s.token}` })}
+        />
+      )}
     </div>
   )
 }
@@ -328,6 +372,7 @@ function NodeRow({
   onEnabled,
   onCopy,
   onQr,
+  onShare,
 }: {
   n: NodeView
   byId: Map<string, NodeView>
@@ -340,6 +385,7 @@ function NodeRow({
   onEnabled: (v: boolean) => void
   onCopy: () => void
   onQr: () => void
+  onShare: () => void
 }) {
   const chain = n.source.kind === 'chain' ? n.source : null
   const target = chain ? byId.get(chain.targetId) : undefined
@@ -364,18 +410,19 @@ function NodeRow({
               <span className="truncate">{target?.name ?? '（已删除）'}</span>
             </span>
           ) : (
-            <span className="truncate font-mono lg:hidden">{p.server}:{p.port}</span>
+            <span className="truncate font-mono 2xl:hidden">{p.server}:{p.port}</span>
           )}
           {tr && <span className="whitespace-nowrap text-zinc-400">· {tr}</span>}
           {n.tags.map((t) => <Badge key={t} color="blue">{t}</Badge>)}
         </div>
       </td>
-      <td className="hidden px-2 py-2 font-mono text-xs text-zinc-600 lg:table-cell dark:text-zinc-400">
+      <td className="hidden px-2 py-2 font-mono text-xs text-zinc-600 2xl:table-cell dark:text-zinc-400">
         <span className="block max-w-56 truncate" title={`${p.server}:${p.port}`}>{p.server}:{p.port}</span>
       </td>
-      <td className="hidden px-2 py-2 sm:table-cell">{sourceLabel(n, subMap)}</td>
-      <td className="hidden px-2 py-2 text-right text-xs sm:table-cell">
-        {UDP_TYPES.has((relay || n).proxy.type) && n.latency === undefined ? <span className="text-zinc-400" title="UDP 协议无法通过 TCP 测速">UDP</span> : <Latency n={n} />}
+      <td className="hidden whitespace-nowrap px-2 py-2 sm:table-cell">{sourceLabel(n, subMap)}</td>
+      <td className="hidden min-w-44 px-2 py-2 xl:table-cell"><CheckCells check={n.check} /></td>
+      <td className="hidden whitespace-nowrap px-2 py-2 text-right text-xs sm:table-cell">
+        {UDP_TYPES.has((relay || n).proxy.type) && n.latency === undefined ? <span className="text-zinc-400" title="UDP 协议需要 mihomo 内核测速">UDP</span> : <Latency n={n} />}
       </td>
       <td className="px-2 py-2">
         <div className="flex items-center justify-end gap-0.5">
@@ -385,6 +432,7 @@ function NodeRow({
           <span className="hidden items-center gap-0.5 sm:flex">
             <IconButton title="复制分享链接" onClick={onCopy} disabled={!n.uri}><Copy className="size-4" /></IconButton>
             <IconButton title="二维码" onClick={onQr} disabled={!n.uri}><QrCode className="size-4" /></IconButton>
+            <IconButton title="临时分享" onClick={onShare}><Send className="size-4" /></IconButton>
           </span>
           <IconButton title="编辑" onClick={onEdit}><Pencil className="size-4" /></IconButton>
           {n.source.kind !== 'sub' && <IconButton title="删除" onClick={onDelete} className="hover:text-red-600"><Trash2 className="size-4" /></IconButton>}

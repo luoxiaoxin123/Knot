@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Server, Rss, ListTree, Share2, Settings as SettingsIcon, LogOut, Menu, X } from 'lucide-react'
+import { Server, Rss, ListTree, Share2, Send, Settings as SettingsIcon, LogOut, Menu, X } from 'lucide-react'
 import { api } from './lib/api'
 import { Button, Field, Input, Spinner, cx, useToast } from './components/ui'
 import NodesPage from './pages/Nodes'
@@ -10,12 +10,14 @@ import RulesPage from './pages/Rules'
 import ProfilesPage from './pages/Profiles'
 import ProfileEditPage from './pages/ProfileEdit'
 import SettingsPage from './pages/Settings'
+import SharesPage from './pages/Shares'
 
 const NAV = [
   { to: '/nodes', label: '节点', icon: Server },
   { to: '/subs', label: '订阅源', icon: Rss },
   { to: '/rules', label: '规则', icon: ListTree },
   { to: '/profiles', label: '订阅输出', icon: Share2 },
+  { to: '/shares', label: '临时分享', icon: Send },
   { to: '/settings', label: '设置', icon: SettingsIcon },
 ]
 
@@ -162,6 +164,7 @@ export default function App() {
         <Route path="/rules" element={<RulesPage />} />
         <Route path="/profiles" element={<ProfilesPage />} />
         <Route path="/profiles/:id" element={<ProfileEditPage />} />
+        <Route path="/shares" element={<SharesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/nodes" replace />} />
       </Routes>

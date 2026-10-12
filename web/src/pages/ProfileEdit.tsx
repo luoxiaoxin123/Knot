@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Eye, Search } from 'lucide-react'
+import { ArrowLeft, Eye, Search, LayoutGrid, RotateCcw } from 'lucide-react'
 import type { Profile } from '@shared/types'
 import { api } from '../lib/api'
 import { useNodes, useProfiles, useRulesMeta, useSubs, useTemplates } from '../lib/hooks'
@@ -25,6 +25,9 @@ import {
 } from '../components/ui'
 import { CodeEditor } from '../components/CodeEditor'
 import { TypeBadge } from './Nodes'
+import { AccessEditor } from '../components/Access'
+import { GroupEditor, type EditorNode } from '../components/GroupEditor'
+import type { CustomGroup } from '@shared/types'
 
 const OVERRIDE_EXAMPLE = `# 示例：开启 TUN、修改端口、局域网共享
 # mixed-port: 7897
@@ -71,15 +74,32 @@ function Editor({ initial }: { initial: Profile }) {
 
   const selected = useMemo(() => selectNodes(f, nodes || [], subs || []), [f, nodes, subs])
 
-  const save = async () => {
+  const [groupEditor, setGroupEditor] = useState<{ initial: CustomGroup[] | null; nodes: EditorNode[] } | null>(null)
+
+  const openGroupEditor = async () => {
+    setGroupEditor({ initial: null, nodes: [] })
+    try {
+      const r = await api.post<{ draft: CustomGroup[]; nodes: EditorNode[] }>('/profiles/groups-draft', { profile: f })
+      const initial = f.groupMode === 'custom' && f.customGroups.length ? f.customGroups : r.draft
+      setGroupEditor({ initial, nodes: r.nodes })
+    } catch (e: any) {
+      toast(e.message, 'error')
+      setGroupEditor(null)
+    }
+  }
+
+  const save = async (next: Profile = f) => {
     setSaving(true)
     try {
-      const p = await api.put<Profile>(`/profiles/${f.id}`, f)
+      const p = await api.put<Profile>(`/profiles/${next.id}`, next)
+      setF(p)
       qc.setQueryData<Profile[]>(['profiles'], (old) => old?.map((x) => (x.id === p.id ? p : x)))
       setDirty(false)
       toast('已保存')
+      return true
     } catch (e: any) {
       toast(e.message, 'error')
+      return false
     } finally {
       setSaving(false)
     }
@@ -155,6 +175,13 @@ function Editor({ initial }: { initial: Profile }) {
               <ToggleRow label="下发流量信息" hint="汇总所选外部订阅的已用流量 / 总量 / 到期时间，客户端可直接显示" checked={f.trafficInfo} onChange={(v) => set('trafficInfo', v)} />
             </div>
           </Card>
+
+          <Card>
+            <CardHeader title="访问控制" desc="对订阅链接和短链同时生效" />
+            <div className="p-4">
+              <AccessEditor value={f.accessControl} onChange={(v) => set('accessControl', v)} />
+            </div>
+          </Card>
         </div>
 
         <div className="space-y-4">
@@ -220,6 +247,47 @@ function Editor({ initial }: { initial: Profile }) {
           </Card>
 
           <Card>
+            <CardHeader title="代理组" desc="自动：根据分流模块 / 模板生成；自定义：拖拽编辑每个分组包含哪些节点" />
+            <div className="space-y-3 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Segmented
+                  value={f.groupMode}
+                  onChange={(v) => {
+                    set('groupMode', v)
+                    if (v === 'custom' && !f.customGroups.length) openGroupEditor()
+                  }}
+                  options={[
+                    { value: 'auto', label: '自动生成' },
+                    { value: 'custom', label: '自定义' },
+                  ]}
+                />
+                {f.groupMode === 'custom' && (
+                  <>
+                    <Button onClick={openGroupEditor}><LayoutGrid className="size-4" />编辑分组</Button>
+                    {f.customGroups.length > 0 && (
+                      <Button variant="ghost" onClick={() => { set('customGroups', []); set('groupMode', 'auto') }}>
+                        <RotateCcw className="size-4" />重置为自动生成
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+              {f.groupMode === 'custom' && f.customGroups.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {f.customGroups.map((g) => (
+                    <Badge key={g.id} title={g.type}>
+                      {g.name} · {g.members.filter((m) => m.startsWith('node:')).length}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {f.groupMode === 'custom' && (
+                <p className="text-xs text-zinc-500">规则仍来自上方的分流模块 / 模板；规则引用的分组如果被删除，生成时会自动补回。</p>
+              )}
+            </div>
+          </Card>
+
+          <Card>
             <CardHeader title="覆写配置（Clash）" desc="与生成的配置深度合并，可修改端口、DNS、TUN 等任意字段" />
             <div className="p-4">
               <CodeEditor value={f.overrideYaml || OVERRIDE_EXAMPLE} onChange={(v) => set('overrideYaml', v === OVERRIDE_EXAMPLE ? '' : v)} height="200px" />
@@ -232,11 +300,24 @@ function Editor({ initial }: { initial: Profile }) {
         <div className="mx-auto flex max-w-6xl items-center justify-end gap-2 px-4 py-3 md:px-8">
           <span className="mr-auto text-sm text-zinc-500">有未保存的修改</span>
           <Button onClick={() => { setF(initial); setDirty(false) }}>还原</Button>
-          <Button variant="primary" onClick={save} loading={saving}>保存</Button>
+          <Button variant="primary" onClick={() => save()} loading={saving}>保存</Button>
         </div>
       </div>
 
       {preview && <PreviewModal profile={f} onClose={() => setPreview(false)} />}
+      {groupEditor && (
+        <GroupEditor
+          title={`编辑代理组 · ${f.name}`}
+          initial={groupEditor.initial}
+          nodes={groupEditor.nodes}
+          onClose={() => setGroupEditor(null)}
+          onApply={async (groups) => {
+            const next = { ...f, groupMode: 'custom' as const, customGroups: groups, knownNodeIds: groupEditor.nodes.map((n) => n.id) }
+            setF(next)
+            if (await save(next)) setGroupEditor(null)
+          }}
+        />
+      )}
     </div>
   )
 }

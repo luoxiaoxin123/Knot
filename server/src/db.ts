@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import type { DbData, Profile, Settings } from '../../shared/types.ts'
+import type { AccessControl, DbData, Profile, Settings } from '../../shared/types.ts'
 import { uid } from './core/util.ts'
 import { MODULE_PRESETS } from './core/rules/modules.ts'
 
@@ -27,7 +27,12 @@ export function defaultSettings(): Settings {
       intervalHours: 24,
       keep: 14,
     },
+    corePath: '',
   }
+}
+
+export function defaultAccess(): AccessControl {
+  return { enabled: true, expiresAt: 0, maxUses: 0, uses: 0, rateLimitPerHour: 0, ipAllowlist: [] }
 }
 
 export function newProfile(name: string): Profile {
@@ -48,8 +53,24 @@ export function newProfile(name: string): Profile {
     addFlags: true,
     trafficInfo: true,
     overrideYaml: '',
+    groupMode: 'auto',
+    customGroups: [],
+    knownNodeIds: [],
+    accessControl: defaultAccess(),
     createdAt: Date.now(),
   }
+}
+
+/** 补全旧版本数据缺少的字段 */
+export function migrate(d: DbData) {
+  for (const p of d.profiles) {
+    p.groupMode ??= 'auto'
+    p.customGroups ??= []
+    p.knownNodeIds ??= []
+    p.accessControl = { ...defaultAccess(), ...p.accessControl }
+  }
+  d.shares ??= []
+  for (const s of d.shares) s.accessControl = { ...defaultAccess(), ...s.accessControl }
 }
 
 function defaults(): DbData {
@@ -62,6 +83,7 @@ function defaults(): DbData {
     profiles: [newProfile('默认')],
     customRules: [],
     templates: [],
+    shares: [],
   }
 }
 
@@ -80,6 +102,7 @@ class Store {
         auth: { ...d.auth, ...raw.auth },
         settings: { ...d.settings, ...raw.settings, s3: { ...d.settings.s3, ...raw.settings?.s3 } },
       }
+      migrate(this.data)
     } else {
       this.data = defaults()
       this.flush()

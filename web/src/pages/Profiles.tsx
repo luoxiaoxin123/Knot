@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, QrCode, RotateCcw, Share2, ExternalLink } from 'lucide-react'
+import { Plus, Pencil, Trash2, QrCode, RotateCcw, Share2, ExternalLink, History, Link2, X } from 'lucide-react'
 import type { Profile } from '@shared/types'
 import { api, fmtTime } from '../lib/api'
 import { subBase, useNodes, useProfiles, useSettings, useSubs, useTemplates } from '../lib/hooks'
-import { Badge, Button, Card, CopyButton, Empty, IconButton, PageHeader, Spinner, useConfirm, useToast } from '../components/ui'
+import { Badge, Button, Card, CopyButton, Empty, Field, IconButton, Input, Modal, PageHeader, Spinner, useConfirm, useToast } from '../components/ui'
+import { AccessLogModal, accessStatus, accessSummary } from '../components/Access'
 import { QrModal } from '../components/Qr'
 import { countNodes } from '../lib/select'
 
@@ -31,6 +32,8 @@ export default function ProfilesPage() {
   const toast = useToast()
   const confirm = useConfirm()
   const [qr, setQr] = useState<{ title: string; text: string } | null>(null)
+  const [logsOf, setLogsOf] = useState<Profile | null>(null)
+  const [aliasOf, setAliasOf] = useState<Profile | null>(null)
   const base = subBase(settings)
   const reload = () => qc.invalidateQueries({ queryKey: ['profiles'] })
 
@@ -48,6 +51,15 @@ export default function ProfilesPage() {
     if (!(await confirm({ title: '重置订阅链接？', body: '旧链接会立即失效，需要在客户端重新导入新链接。适用于链接泄露的情况。', okText: '重置' }))) return
     await api.post(`/profiles/${p.id}/reset-token`)
     toast('已重置')
+    reload()
+  }
+  const genShort = async (p: Profile) => {
+    await api.post(`/profiles/${p.id}/short`).catch((e) => toast(e.message, 'error'))
+    reload()
+  }
+  const delShort = async (p: Profile) => {
+    if (!(await confirm({ title: '删除短链？', body: '使用短链导入的客户端将无法再更新。', danger: true, okText: '删除' }))) return
+    await api.del(`/profiles/${p.id}/short`)
     reload()
   }
 
@@ -72,7 +84,10 @@ export default function ProfilesPage() {
           {profiles.map((p) => {
             const count = countNodes(p, nodes || [], subs || [])
             const tpl = p.ruleMode === 'template' ? templates?.find((t) => t.id === p.templateId) : null
-            const last = p.access?.[0]
+            const last = p.access?.find((a) => !a.denied)
+            const st = accessStatus(p.accessControl)
+            const limits = accessSummary(p.accessControl)
+            const shortUrl = p.shortCode ? `${base}/x/${p.shortCode}` : ''
             return (
               <Card key={p.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
@@ -81,13 +96,17 @@ export default function ProfilesPage() {
                       <span className="font-medium">{p.name}</span>
                       <Badge color="blue">{count} 节点</Badge>
                       <Badge>{tpl ? `模板：${tpl.name}` : `${p.modules.length} 个分流模块`}</Badge>
+                      {p.groupMode === 'custom' && <Badge color="violet">自定义分组</Badge>}
+                      <Badge color={st.color}>{st.label}</Badge>
                     </div>
                     <div className="mt-1 text-xs text-zinc-500">
                       {last ? `最近更新：${fmtTime(last.at)} · ${last.target} · ${last.ua || '未知客户端'}` : '尚未被客户端拉取'}
+                      {limits.length > 0 && <span> · {limits.join(' · ')}</span>}
                     </div>
                   </div>
                   <div className="flex gap-0.5">
                     <IconButton title="编辑" onClick={() => nav(`/profiles/${p.id}`)}><Pencil className="size-4" /></IconButton>
+                    <IconButton title="访问记录" onClick={() => setLogsOf(p)}><History className="size-4" /></IconButton>
                     <IconButton title="重置链接" onClick={() => resetToken(p)}><RotateCcw className="size-4" /></IconButton>
                     <IconButton title="删除" onClick={() => remove(p)} className="hover:text-red-600"><Trash2 className="size-4" /></IconButton>
                   </div>
@@ -109,6 +128,25 @@ export default function ProfilesPage() {
                       </li>
                     )
                   })}
+                  <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
+                    <div className="w-32 shrink-0 text-sm" title="短链同样根据客户端自动识别格式，也可以加 ?t=clash / singbox / v2ray">短链</div>
+                    {shortUrl ? (
+                      <>
+                        <code className="min-w-0 flex-1 truncate text-xs text-zinc-500">{shortUrl}</code>
+                        <div className="flex items-center gap-1">
+                          <CopyButton text={shortUrl} label="复制" />
+                          <IconButton title="二维码" onClick={() => setQr({ title: `${p.name} · 短链`, text: shortUrl })}><QrCode className="size-4" /></IconButton>
+                          <IconButton title="自定义短链" onClick={() => setAliasOf(p)}><Pencil className="size-4" /></IconButton>
+                          <IconButton title="删除短链" onClick={() => delShort(p)} className="hover:text-red-600"><X className="size-4" /></IconButton>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-1 items-center gap-2">
+                        <Button size="sm" onClick={() => genShort(p)}><Link2 className="size-3.5" />生成短链</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setAliasOf(p)}>自定义</Button>
+                      </div>
+                    )}
+                  </li>
                   <OneClickImport base={base} p={p} />
                 </ul>
               </Card>
@@ -117,6 +155,8 @@ export default function ProfilesPage() {
         </div>
       )}
       <QrModal open={!!qr} onClose={() => setQr(null)} title={qr?.title || ''} text={qr?.text || ''} />
+      <AccessLogModal open={!!logsOf} onClose={() => setLogsOf(null)} title={`访问记录 · ${logsOf?.name || ''}`} logs={logsOf?.access} />
+      {aliasOf && <AliasModal p={aliasOf} onClose={() => setAliasOf(null)} onDone={reload} />}
     </div>
   )
 }
@@ -132,5 +172,44 @@ function OneClickImport({ base, p }: { base: string; p: Profile }) {
       <a className="text-blue-600 hover:underline" href={`sing-box://import-remote-profile?url=${encodeURIComponent(subUrl(base, p, 'singbox'))}#${name}`}>sing-box</a>
       <a className="text-blue-600 hover:underline" href={`v2rayng://install-config?url=${encodeURIComponent(subUrl(base, p, 'v2ray'))}`}>v2rayNG</a>
     </li>
+  )
+}
+
+function AliasModal({ p, onClose, onDone }: { p: Profile; onClose: () => void; onDone: () => void }) {
+  const toast = useToast()
+  const [code, setCode] = useState(p.shortCode || '')
+  const [loading, setLoading] = useState(false)
+  const save = async () => {
+    setLoading(true)
+    try {
+      await api.post(`/profiles/${p.id}/short`, { code })
+      onDone()
+      onClose()
+    } catch (e: any) {
+      toast(e.message, 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="自定义短链"
+      width="max-w-md"
+      footer={
+        <>
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" onClick={save} loading={loading} disabled={!code}>保存</Button>
+        </>
+      }
+    >
+      <Field label="短链代码" hint="字母、数字、- 和 _，4-32 位。短链越短越容易被猜到，建议配合访问控制使用。">
+        <div className="flex items-center gap-1 text-sm">
+          <span className="shrink-0 text-zinc-500">/x/</span>
+          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="phone" autoFocus />
+        </div>
+      </Field>
+    </Modal>
   )
 }

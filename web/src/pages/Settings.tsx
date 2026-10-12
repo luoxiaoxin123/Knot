@@ -25,6 +25,7 @@ function SettingsForm({ initial }: { initial: SettingsView }) {
     try {
       const r = await api.put<SettingsView>('/settings', f)
       qc.setQueryData(['settings'], r)
+      qc.invalidateQueries({ queryKey: ['core'] })
       if (!silent) toast('已保存')
     } catch (e: any) {
       toast(e.message, 'error')
@@ -73,6 +74,7 @@ function SettingsForm({ initial }: { initial: SettingsView }) {
         </div>
       </Card>
 
+      <CoreCard path={f.corePath} onChange={(v) => set('corePath', v)} />
       <S3Card f={f} setS3={setS3} save={save} />
       <LocalBackupCard />
       <PasswordCard />
@@ -259,6 +261,32 @@ function PasswordCard() {
         <Field label="原密码"><Input type="password" value={oldPassword} onChange={(e) => setOld(e.target.value)} autoComplete="current-password" /></Field>
         <Field label="新密码"><Input type="password" value={newPassword} onChange={(e) => setNew(e.target.value)} autoComplete="new-password" /></Field>
         <Button onClick={submit} loading={loading} disabled={!oldPassword || !newPassword}>修改</Button>
+      </div>
+    </Card>
+  )
+}
+
+function CoreCard({ path, onChange }: { path: string; onChange: (v: string) => void }) {
+  const st = useQuery({ queryKey: ['core'], queryFn: () => api.get<{ available: boolean; path: string | null; version: string }>('/core/status') })
+  return (
+    <Card>
+      <CardHeader
+        title="mihomo 内核"
+        desc="用于真实延迟测试（支持 Hysteria2 / TUIC 等 UDP 协议与链式代理）和 AI / 流媒体解锁检测。Docker 镜像已内置。"
+      />
+      <div className="space-y-3 p-4">
+        <div className="text-sm">
+          {st.isLoading ? (
+            <Spinner />
+          ) : st.data?.available ? (
+            <span className="text-emerald-600">已就绪 · {st.data.version || st.data.path}</span>
+          ) : (
+            <span className="text-amber-600">未找到内核，测速将退回 TCP 握手延迟</span>
+          )}
+        </div>
+        <Field label="内核路径" hint="留空自动查找（MIHOMO_PATH 环境变量、PATH、/usr/local/bin/mihomo、数据目录 bin/mihomo）">
+          <Input value={path} onChange={(e) => onChange(e.target.value)} placeholder={st.data?.path || '/usr/local/bin/mihomo'} className="font-mono" />
+        </Field>
       </div>
     </Card>
   )

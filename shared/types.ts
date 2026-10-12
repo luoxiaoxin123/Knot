@@ -39,10 +39,30 @@ export interface Node {
   enabled: boolean
   tags: string[]
   createdAt: number
-  /** 最近一次 TCP 测速结果（ms），-1 表示失败 */
+  /** 最近一次测速结果（ms），-1 表示失败 */
   latency?: number
   latencyAt?: number
+  /** 测速方式：tcp 握手 / 内核真实延迟 */
+  latencyKind?: 'tcp' | 'real'
+  /** 最近一次可用性与解锁检测 */
+  check?: NodeCheck
 }
+
+export type UnlockStatus = 'yes' | 'no' | 'partial' | 'error'
+
+export interface NodeCheck {
+  at: number
+  /** 内核真实延迟（ms），-1 不可用 */
+  delay: number
+  /** 落地出口 IP / 国家 */
+  ip?: string
+  country?: string
+  unlock?: Partial<Record<UnlockService, { status: UnlockStatus; region?: string; note?: string }>>
+  error?: string
+}
+
+export const UNLOCK_SERVICES = ['chatgpt', 'claude', 'gemini', 'netflix', 'youtube'] as const
+export type UnlockService = (typeof UNLOCK_SERVICES)[number]
 
 export interface SubTraffic {
   upload: number
@@ -134,6 +154,47 @@ export interface RuleTemplate {
 
 // ---------------- 输出订阅 ----------------
 
+/** 订阅访问控制（输出配置与临时分享共用） */
+export interface AccessControl {
+  /** 停用后链接立即失效 */
+  enabled: boolean
+  /** 到期时间（ms 时间戳），0 为不限 */
+  expiresAt: number
+  /** 最多被拉取次数，0 为不限 */
+  maxUses: number
+  /** 已拉取次数 */
+  uses: number
+  /** 每小时最多拉取次数，0 为不限 */
+  rateLimitPerHour: number
+  /** IP 白名单（IP 或 CIDR），为空不限制 */
+  ipAllowlist: string[]
+}
+
+export interface AccessLog {
+  at: number
+  ip: string
+  ua: string
+  target: string
+  /** 被拒绝的原因 */
+  denied?: string
+}
+
+export type ProxyGroupType = 'select' | 'url-test' | 'fallback' | 'load-balance'
+
+/** 自定义代理组。成员：`node:<节点id>` / 其他分组名 / DIRECT / REJECT */
+export interface CustomGroup {
+  id: string
+  name: string
+  type: ProxyGroupType
+  members: string[]
+  /** 订阅新增的节点自动加入（受 filter 约束） */
+  autoNew: boolean
+  /** 自动加入新节点时的名称正则 */
+  filter: string
+  /** 来自自动生成分组时的原名：规则里引用原名的会改指向本组 */
+  origin?: string
+}
+
 export type NodeSelectMode = 'all' | 'sources' | 'pick'
 
 export interface Profile {
@@ -162,9 +223,30 @@ export interface Profile {
   trafficInfo: boolean
   /** 合并进生成配置的 YAML（dns / tun / 端口等） */
   overrideYaml: string
+  /** 代理组：auto 按规则自动生成；custom 使用拖拽编辑的分组 */
+  groupMode: 'auto' | 'custom'
+  customGroups: CustomGroup[]
+  /** 保存自定义分组时已存在的节点 id，用于识别之后新增的节点 */
+  knownNodeIds: string[]
+  accessControl: AccessControl
+  /** 短链代码：/x/<code>，未生成时为空 */
+  shortCode?: string
   createdAt: number
   /** 最近访问记录 */
-  access?: { at: number; ip: string; ua: string; target: string }[]
+  access?: AccessLog[]
+}
+
+/** 临时分享：把少量节点临时给别人用，可限制次数 / 时间，随时作废 */
+export interface Share {
+  id: string
+  name: string
+  token: string
+  nodeIds: string[]
+  /** 附带分流规则（Clash / sing-box 客户端）；关闭时只有节点 */
+  withRules: boolean
+  accessControl: AccessControl
+  createdAt: number
+  access?: AccessLog[]
 }
 
 export interface S3Config {
@@ -194,6 +276,8 @@ export interface Settings {
   ruleDownloadViaProxy: boolean
   testUrl: string
   s3: S3Config
+  /** mihomo 内核路径（真实测速 / 解锁检测），留空自动查找 */
+  corePath: string
 }
 
 export interface DbData {
@@ -205,6 +289,7 @@ export interface DbData {
   profiles: Profile[]
   customRules: CustomRule[]
   templates: RuleTemplate[]
+  shares: Share[]
 }
 
 /** 内置分流模块（只读描述，用于前端展示） */

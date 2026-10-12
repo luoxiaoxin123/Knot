@@ -1,5 +1,6 @@
 import YAML from 'yaml'
-import type { CustomRule, Node, Profile, Proxy, RuleTemplate, Settings, Subscription } from '../../../shared/types.ts'
+import type { CustomGroup, CustomRule, Node, Profile, Proxy, RuleTemplate, Settings, Subscription } from '../../../shared/types.ts'
+import { applyCustomGroups, applyCustomGroupsSingbox, groupsToCustom } from './custom-groups.ts'
 import { AUTO_GROUP, PROXY_GROUP, geoUrl, normalizeModules, type RuleModule } from './rules/modules.ts'
 import { parseIni } from './rules/ini.ts'
 import { GROUP_REGIONS, REGIONS, detectRegion, type Region } from './region.ts'
@@ -427,11 +428,17 @@ function isMatchRule(r: string) {
   return /^\s*(MATCH|FINAL)\s*,/i.test(r)
 }
 
-export function generateClash(ctx: GenContext, profile: Profile): GenResult {
-  const resolved = resolveProxies(ctx, profile)
-  const warnings = [...resolved.warnings]
+interface ClashParts {
+  config: any
+  groups: any[]
+  rules: string[]
+  providers: Record<string, any>
+  defaultProxy: string
+}
+
+/** 按规则模式（内置模块 / 模板）+ 自定义规则生成分组与规则 */
+function buildClashParts(ctx: GenContext, profile: Profile, resolved: ResolvedProxies, warnings: string[]): ClashParts {
   const names = resolved.visible
-  if (!names.length) warnings.push('没有可用节点')
 
   let config: any
   let groups: any[]
@@ -517,6 +524,27 @@ export function generateClash(ctx: GenContext, profile: Profile): GenResult {
   }
 
   if (!rules.some(isMatchRule)) rules.push(`MATCH,${groups.some((g) => g.name === defaultProxy) ? defaultProxy : 'DIRECT'}`)
+  return { config, groups, rules, providers, defaultProxy }
+}
+
+/** 当前配置自动生成的分组，转换为可编辑的自定义分组（拖拽编辑器的初始数据） */
+export function draftCustomGroups(ctx: GenContext, profile: Profile): CustomGroup[] {
+  const resolved = resolveProxies(ctx, profile)
+  const parts = buildClashParts(ctx, { ...profile, groupMode: 'auto' }, resolved, [])
+  return groupsToCustom(parts.groups, resolved)
+}
+
+export function generateClash(ctx: GenContext, profile: Profile): GenResult {
+  const resolved = resolveProxies(ctx, profile)
+  const warnings = [...resolved.warnings]
+  if (!resolved.visible.length) warnings.push('没有可用节点')
+  let { config, groups, rules, providers } = buildClashParts(ctx, profile, resolved, warnings)
+
+  if (profile.groupMode === 'custom' && profile.customGroups?.length) {
+    const r = applyCustomGroups(groups, rules, providers, profile, resolved, ctx.settings.testUrl, warnings)
+    groups = r.groups
+    rules = r.rules
+  }
 
   // 规则集通过代理下载时，确保代理组存在
   const finalGroupNames = new Set(groups.map((g) => g.name))
@@ -812,6 +840,9 @@ export function generateSingbox(ctx: GenContext, profile: Profile): GenResult {
       cache_file: { enabled: true },
       clash_api: { external_controller: '127.0.0.1:9090' },
     },
+  }
+  if (profile.groupMode === 'custom' && profile.customGroups?.length) {
+    applyCustomGroupsSingbox(config, profile, resolved, ok, ctx.settings.testUrl, warnings)
   }
   return { text: JSON.stringify(config, null, 2), warnings, contentType: 'application/json; charset=utf-8' }
 }
