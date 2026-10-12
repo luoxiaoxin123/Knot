@@ -291,12 +291,19 @@ export function GroupEditor({
   ]
 
   return (
-    <Modal open onClose={onClose} title={title} width="max-w-[min(1440px,98vw)]">
+    <Modal
+      open
+      onClose={onClose}
+      title={title}
+      width="max-w-[min(1440px,98vw)]"
+      panelClass="lg:h-[92vh]"
+      bodyClass="lg:flex lg:flex-col lg:overflow-hidden"
+    >
       {loading || !initial ? (
         <div className="flex justify-center py-20"><Spinner /></div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={collision} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActive(null)}>
-          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div className="mb-3 flex shrink-0 flex-wrap items-start justify-between gap-3">
             <div className="text-xs leading-relaxed text-zinc-500">
               <p>把右侧节点拖进分组；分组内拖动可排序，拖到另一个分组为移动。拖动「可用节点」标题会拖入当前筛选出的全部节点。</p>
               <p>双击分组名改名，<Settings2 className="inline size-3" /> 设置类型与“自动加入新节点”。规则中引用的分组被改名后，规则会自动跟随。</p>
@@ -307,10 +314,11 @@ export function GroupEditor({
             </div>
           </div>
 
-          <div className="flex flex-col gap-4 lg:flex-row">
-            <div className="min-w-0 flex-1">
+          {/* 宽屏：左右两栏各自滚动，弹窗本身不滚动 */}
+          <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row">
+            <div className="flex min-w-0 flex-1 flex-col lg:min-h-0">
               {wide && (
-                <div className="mb-2 flex items-center justify-end gap-1 text-xs text-zinc-500">
+                <div className="mb-2 flex shrink-0 items-center justify-end gap-1 text-xs text-zinc-500">
                   列数
                   {[2, 3, 4, 5, 6].map((n) => (
                     <button key={n} onClick={() => setCols(n)} className={cx('size-6 rounded', cols === n ? 'bg-blue-600 text-white' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800')}>
@@ -319,9 +327,9 @@ export function GroupEditor({
                   ))}
                 </div>
               )}
-              <div className="max-h-[68vh] overflow-y-auto pr-1">
+              <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
                 <SortableContext items={groups.map((g) => `col:${g.id}`)} strategy={rectSortingStrategy}>
-                  <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${wide ? cols : 1}, minmax(0, 1fr))` }}>
+                  <div className="grid items-start gap-3" style={{ gridTemplateColumns: `repeat(${wide ? cols : 1}, minmax(0, 1fr))` }}>
                     {groups.map((g) => (
                       <GroupColumn
                         key={g.id}
@@ -345,16 +353,16 @@ export function GroupEditor({
               </div>
             </div>
 
-            <aside className="w-full shrink-0 space-y-3 lg:w-72">
-              <div className="grid grid-cols-2 gap-2">
+            <aside className="flex w-full shrink-0 flex-col gap-3 lg:min-h-0 lg:w-72">
+              <div className="grid shrink-0 grid-cols-2 gap-2">
                 <Button onClick={addGroup}><Plus className="size-4" />添加分组</Button>
                 <Button variant="primary" onClick={apply} loading={saving}>应用并保存</Button>
               </div>
-              <Button className="w-full" onClick={() => setHideAdded(!hideAdded)}>
+              <Button className="w-full shrink-0" onClick={() => setHideAdded(!hideAdded)}>
                 {hideAdded ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
                 {hideAdded ? '显示已添加节点' : '隐藏已添加节点'}
               </Button>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid shrink-0 grid-cols-2 gap-2">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-zinc-400" />
                   <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="按名称筛选" className="h-8 pl-7 text-xs" />
@@ -363,19 +371,19 @@ export function GroupEditor({
                   {sources.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </Select>
               </div>
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+              <div className="flex flex-col rounded-lg border border-zinc-200 lg:min-h-0 lg:flex-[3] dark:border-zinc-800">
                 <AvailHeader refs={available.map((n) => `node:${n.id}`)} total={nodes.length} />
-                <div className="max-h-[38vh] space-y-1 overflow-y-auto p-2">
+                <div className="max-h-[40vh] space-y-1 overflow-y-auto p-2 lg:max-h-none lg:min-h-0 lg:flex-1">
                   {available.map((n) => (
                     <AvailItem key={n.id} refKey={`node:${n.id}`} added={used.has(`node:${n.id}`)}>{label(`node:${n.id}`)}</AvailItem>
                   ))}
                   {!available.length && <div className="py-4 text-center text-xs text-zinc-500">没有节点</div>}
                 </div>
-                <div className="border-t border-zinc-200 p-2 dark:border-zinc-800">
-                  <div className="mb-1 px-1 text-xs text-zinc-500">特殊节点 / 分组</div>
-                  <div className="space-y-1">
-                    {special.map((r) => <AvailItem key={r} refKey={r}>{label(r)}</AvailItem>)}
-                  </div>
+              </div>
+              <div className="flex flex-col rounded-lg border border-zinc-200 lg:min-h-0 lg:flex-[2] dark:border-zinc-800">
+                <div className="shrink-0 border-b border-zinc-200 px-3 py-2 text-xs text-zinc-500 dark:border-zinc-800">特殊节点 / 分组</div>
+                <div className="max-h-[30vh] space-y-1 overflow-y-auto p-2 lg:max-h-none lg:min-h-0 lg:flex-1">
+                  {special.map((r) => <AvailItem key={r} refKey={r}>{label(r)}</AvailItem>)}
                 </div>
               </div>
             </aside>
@@ -528,15 +536,13 @@ function GroupColumn({
         </button>
       </div>
       <div ref={drop.setNodeRef} className={cx('min-h-16 flex-1 space-y-1 p-2 transition-colors', drop.isOver && 'bg-blue-50/70 dark:bg-blue-950/30')}>
-        <div className="max-h-80 space-y-1 overflow-y-auto">
-          <SortableContext items={group.members.map((m) => `m:${group.id}:${m}`)} strategy={verticalListSortingStrategy}>
-            {group.members.map((m) => (
-              <MemberItem key={m} gid={group.id} refKey={m} onRemove={() => onRemoveMember(m)}>
-                {label(m)}
-              </MemberItem>
-            ))}
-          </SortableContext>
-        </div>
+        <SortableContext items={group.members.map((m) => `m:${group.id}:${m}`)} strategy={verticalListSortingStrategy}>
+          {group.members.map((m) => (
+            <MemberItem key={m} gid={group.id} refKey={m} onRemove={() => onRemoveMember(m)}>
+              {label(m)}
+            </MemberItem>
+          ))}
+        </SortableContext>
         {!group.members.length && <div className="py-4 text-center text-xs text-zinc-400">拖入节点</div>}
       </div>
     </div>

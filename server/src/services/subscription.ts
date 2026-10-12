@@ -36,6 +36,7 @@ export function mergeSubNodes(sub: Subscription, proxies: Proxy[]) {
       source: { kind: 'sub', subId: sub.id },
       enabled: match?.enabled ?? true,
       tags: match?.tags ?? [],
+      ...(match?.flag ? { flag: match.flag } : {}),
       createdAt: match?.createdAt ?? Date.now(),
       latency: match && key(match.proxy) === key(p) ? match.latency : undefined,
       latencyAt: match && key(match.proxy) === key(p) ? match.latencyAt : undefined,

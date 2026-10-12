@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { CheckCells } from '../components/CheckBadges'
+import { Flag, FlagPicker } from '../components/Flag'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link2, Pencil, Trash2, Plus, Gauge, Search, Copy, Server, ArrowRight, QrCode, Send, ScanSearch } from 'lucide-react'
+import { Link2, Pencil, Trash2, Plus, Gauge, Search, Copy, Server, ArrowRight, QrCode, Send, ScanSearch, Flag as FlagIcon } from 'lucide-react'
 import YAML from 'yaml'
 import type { Subscription } from '@shared/types'
 import { api, copyText } from '../lib/api'
@@ -101,6 +102,7 @@ export default function NodesPage() {
   const [qr, setQr] = useState<{ title: string; text: string } | null>(null)
   const [testing, setTesting] = useState(false)
   const [sharing, setSharing] = useState<string[] | null>(null)
+  const [flagFor, setFlagFor] = useState<{ ids: string[]; value?: string } | null>(null)
   const { data: settings } = useSettings()
 
   const byId = useMemo(() => new Map((nodes || []).map((n) => [n.id, n])), [nodes])
@@ -202,6 +204,19 @@ export default function NodesPage() {
     await api.put(`/nodes/${n.id}`, { enabled }).catch((e) => toast(e.message, 'error'))
   }
 
+  const saveFlag = async (ids: string[], flag: string) => {
+    setFlagFor(null)
+    const set = new Set(ids)
+    qc.setQueryData<NodeView[]>(['nodes'], (old) => old?.map((x) => (set.has(x.id) ? { ...x, flag: flag || undefined } : x)))
+    try {
+      if (ids.length === 1) await api.put(`/nodes/${ids[0]}`, { flag })
+      else await api.post('/nodes/batch', { action: 'flag', ids, flag })
+    } catch (e: any) {
+      toast(e.message, 'error')
+    }
+    refresh()
+  }
+
   const counts = useMemo(() => {
     const c = { all: nodes?.length || 0, manual: 0, chain: 0 } as Record<string, number>
     for (const n of nodes || []) {
@@ -279,6 +294,7 @@ export default function NodesPage() {
             await copyText(uris.join('\n'))
             toast(`已复制 ${uris.length} 条分享链接`)
           }}>复制链接</Button>
+          <Button size="sm" onClick={() => setFlagFor({ ids: [...selected] })}><FlagIcon className="size-3.5" />设置国旗</Button>
           <Button size="sm" onClick={() => setSharing([...selected])}><Send className="size-3.5" />临时分享</Button>
           <Button size="sm" variant="danger" onClick={() => batch('delete')}>删除</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>取消选择</Button>
@@ -324,6 +340,7 @@ export default function NodesPage() {
                     onEnabled={(v) => setEnabled(n, v)}
                     onQr={() => n.uri && setQr({ title: n.name, text: n.uri })}
                     onShare={() => setSharing([n.id])}
+                    onFlag={() => setFlagFor({ ids: [n.id], value: n.flag })}
                     onCopy={async () => {
                       if (!n.uri) return toast('该节点无法生成分享链接', 'error')
                       await copyText(n.uri)
@@ -341,6 +358,14 @@ export default function NodesPage() {
       {editing && <EditModal node={editing} nodes={nodes || []} onClose={() => setEditing(null)} onDone={refresh} />}
       {chainFor && <ChainModal target={chainFor} nodes={nodes || []} subMap={subMap} onClose={() => setChainFor(null)} onDone={refresh} />}
       <QrModal open={!!qr} onClose={() => setQr(null)} title={qr?.title || ''} text={qr?.text || ''} />
+      {flagFor && (
+        <FlagPicker
+          value={flagFor.value}
+          title={flagFor.ids.length > 1 ? `给 ${flagFor.ids.length} 个节点设置国旗` : `设置国旗 · ${byId.get(flagFor.ids[0])?.name || ''}`}
+          onClose={() => setFlagFor(null)}
+          onChange={(code) => saveFlag(flagFor.ids, code)}
+        />
+      )}
       {sharing && (
         <ShareModal
           nodeIds={sharing}
@@ -350,6 +375,25 @@ export default function NodesPage() {
         />
       )}
     </div>
+  )
+}
+
+/** 名称前的国旗；没设置时显示一个淡色的占位按钮 */
+function FlagButton({ own, inherited, onClick }: { own?: string; inherited?: string; onClick: () => void }) {
+  const code = own || inherited
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={code ? (own ? '更改国旗' : '沿用落地节点的国旗，点击单独设置') : '设置国旗'}
+      className={cx(
+        'flex h-5 w-6 shrink-0 items-center justify-center rounded text-base leading-none transition-colors',
+        code ? 'hover:bg-zinc-100 dark:hover:bg-zinc-800' : 'border border-dashed border-zinc-300 text-zinc-300 hover:border-zinc-400 hover:text-zinc-500 dark:border-zinc-700 dark:text-zinc-600',
+        !own && inherited && 'opacity-50',
+      )}
+    >
+      {code ? <Flag code={code} /> : <FlagIcon className="size-3" />}
+    </button>
   )
 }
 
@@ -373,6 +417,7 @@ function NodeRow({
   onCopy,
   onQr,
   onShare,
+  onFlag,
 }: {
   n: NodeView
   byId: Map<string, NodeView>
@@ -386,6 +431,7 @@ function NodeRow({
   onCopy: () => void
   onQr: () => void
   onShare: () => void
+  onFlag: () => void
 }) {
   const chain = n.source.kind === 'chain' ? n.source : null
   const target = chain ? byId.get(chain.targetId) : undefined
@@ -398,6 +444,7 @@ function NodeRow({
       <td className="px-3 py-2.5 align-top"><Checkbox checked={checked} onChange={onCheck} /></td>
       <td className="w-full max-w-0 px-2 py-2">
         <div className="flex min-w-0 items-center gap-1.5">
+          <FlagButton own={n.flag} inherited={target?.flag} onClick={onFlag} />
           <TypeBadge type={p.type} />
           <span className="truncate font-medium" title={n.name}>{n.name}</span>
           {broken && <Badge color="red">失效</Badge>}

@@ -1,5 +1,6 @@
 import type { NodeCheck, UnlockService } from '@shared/types'
 import { cx } from './ui'
+import { flagOf } from './Flag'
 
 const SERVICES: { key: UnlockService; label: string; name: string }[] = [
   { key: 'chatgpt', label: 'GPT', name: 'ChatGPT' },
@@ -16,10 +17,6 @@ const STATUS = {
   error: { cls: 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800', text: '检测失败' },
 }
 
-export function flagOf(code?: string) {
-  if (!code || !/^[A-Z]{2}$/.test(code)) return ''
-  return String.fromCodePoint(...[...code].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65))
-}
 
 /** 节点出口 IP 与解锁状态 */
 export function CheckCells({ check }: { check?: NodeCheck }) {

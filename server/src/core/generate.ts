@@ -5,7 +5,7 @@ import { stashTransform } from './stash.ts'
 import { applyCustomGroups, applyCustomGroupsSingbox, groupsToCustom } from './custom-groups.ts'
 import { AUTO_GROUP, PROXY_GROUP, geoUrl, normalizeModules, type RuleModule } from './rules/modules.ts'
 import { parseIni } from './rules/ini.ts'
-import { GROUP_REGIONS, REGIONS, detectRegion, type Region } from './region.ts'
+import { GROUP_REGIONS, REGIONS, detectRegion, flagEmoji, type Region } from './region.ts'
 import { toUri } from './uri-emit.ts'
 import { toSingboxOutbound } from './singbox.ts'
 import { b64encode, deepClone, deepMerge, safeRegex } from './util.ts'
@@ -77,9 +77,11 @@ export function resolveProxies(ctx: GenContext, profile: Profile): ResolvedProxi
     return t ? landing(t, depth + 1) : n
   }
   const assign = (n: Node) => {
-    const region = detectRegion(landing(n).name)
+    // 国旗以节点页手动设置的为准（链式节点没设时沿用落地节点的），不按名称或 IP 猜
+    const code = n.flag || (n.source.kind === 'chain' ? landing(n).flag : undefined)
+    const region = (code && REGIONS.find((r) => r.code === code)) || detectRegion(landing(n).name)
     let base = n.name.trim() || n.id
-    if (profile.addFlags && region && !FLAG_RE.test(base)) base = `${region.flag} ${base}`
+    if (profile.addFlags && code) base = `${flagEmoji(code)} ${base.replace(FLAG_RE, '').trim() || base}`
     let name = base
     for (let i = 2; used.has(name) || BUILTIN_POLICIES.has(name); i++) name = `${base} ${i}`
     used.add(name)

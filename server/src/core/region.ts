@@ -44,3 +44,8 @@ export const GROUP_REGIONS = ['HK', 'TW', 'JP', 'SG', 'US', 'KR']
 export function detectRegion(name: string): Region | undefined {
   return REGIONS.find((r) => r.re.test(name))
 }
+
+/** 两位国家代码 → 国旗 emoji */
+export function flagEmoji(code: string): string {
+  return /^[A-Z]{2}$/.test(code) ? String.fromCodePoint(...[...code].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)) : ''
+}

@@ -6,6 +6,7 @@ import { parseSubscription } from '../src/core/sub-parse.ts'
 import { generateClash, generateSingbox, generateV2ray, type GenContext } from '../src/core/generate.ts'
 import type { Node, CustomRule } from '../../shared/types.ts'
 import { URIS, settings, profile } from './fixtures.ts'
+import { expandCustomRules, parseRuleLines, rulesToYaml, yamlToRules } from '../../shared/rules-yaml.ts'
 
 function mkNodes(): Node[] {
   return URIS.map((u, i) => {
@@ -86,15 +87,25 @@ describe('generate', () => {
     expect(y['proxy-groups'].find((g: any) => g.name === '🇺🇸 美国节点').proxies).toEqual(['US via JP via HK'])
     expect(y['proxy-groups'].find((g: any) => g.name === '🇭🇰 香港节点')).toBeUndefined()
   })
-  it('flags follow landing node', () => {
-    const y = YAML.parse(generateClash(ctx, profile()).text)
+  it('flags are manual and follow landing node', () => {
+    // 没设置国旗时不按名称猜
+    const plain = YAML.parse(generateClash(ctx, profile()).text).proxies.map((p: any) => p.name)
+    expect(plain).toContain('JP via HK')
+    expect(plain).toContain('US via JP via HK')
+    const flagged = nodes.map((n) => ({ ...n, flag: ({ n0: 'SG', n1: 'JP', n2: 'US', c1: 'KR' } as Record<string, string>)[n.id] }))
+    const y = YAML.parse(generateClash({ ...ctx, nodes: flagged }, profile()).text)
     const names = y.proxies.map((p: any) => p.name)
-    expect(names).toContain('🇺🇸 US via JP via HK')
-    expect(names).toContain('🇯🇵 JP via HK')
+    expect(names).toContain('🇰🇷 JP via HK') // 链式节点自己设置的优先
+    expect(names).toContain('🇺🇸 US via JP via HK') // 没设置则沿用落地节点
+    expect(names).toContain('🇸🇬 HK Reality') // 名称里原有的国旗被替换
+    // 地区分组也以手动国旗为准
+    expect(y['proxy-groups'].find((g: any) => g.name === '🇸🇬 新加坡节点').proxies).toContain('🇸🇬 HK Reality')
+    const off = YAML.parse(generateClash({ ...ctx, nodes: flagged }, profile({ addFlags: false })).text).proxies.map((p: any) => p.name)
+    expect(off).toContain('JP via HK')
   })
   it('singbox + v2ray', () => {
     const s = JSON.parse(generateSingbox(ctx, profile()).text)
-    expect(s.outbounds.find((o: any) => o.tag === '🇯🇵 JP via HK').detour).toBe('🇭🇰 HK Reality')
+    expect(s.outbounds.find((o: any) => o.tag === 'JP via HK').detour).toBe('🇭🇰 HK Reality')
     const v = Buffer.from(generateV2ray(ctx, profile()).text, 'base64').toString()
     expect(v.split('\n').length).toBe(URIS.length)
   })
@@ -199,5 +210,38 @@ describe('ios / stash formats', () => {
     expect(hy.password).toBeUndefined()
     expect(Object.values(y['rule-providers']).every((x: any) => x.format === 'text')).toBe(true)
     expect(y.sniffer).toBeUndefined()
+  })
+})
+
+describe('custom rule sets', () => {
+  it('parses yaml list, payload and plain text', () => {
+    const a = parseRuleLines('- DOMAIN-SUFFIX,reddit.com,reddit\n- DOMAIN-SUFFIX,redd.it,reddit\n# c\n- IP-CIDR,1.1.1.0/24,DIRECT,no-resolve')
+    expect(a.errors).toEqual([])
+    expect(a.rules).toHaveLength(3)
+    expect(a.rules[2]).toEqual({ type: 'IP-CIDR', value: '1.1.1.0/24', policy: 'DIRECT', noResolve: true })
+    const b = parseRuleLines("payload:\n  - 'DOMAIN,a.com'\n  - IP-CIDR,2.2.2.0/24,no-resolve", 'Proxy')
+    expect(b.errors).toEqual([])
+    expect(b.rules.map((r) => r.policy)).toEqual(['', ''])
+    expect(b.rules[1].noResolve).toBe(true)
+    const c = parseRuleLines('DOMAIN,a.com,DIRECT\nDOMAIN-KEYWORD,b')
+    expect(c.errors).toHaveLength(1) // 第二行没有策略也没有默认策略
+    expect(parseRuleLines('FOO,bar,DIRECT').errors[0]).toMatch('不支持')
+  })
+  it('expands sets in order and roundtrips yaml', () => {
+    const list: CustomRule[] = [
+      { id: 'a', enabled: true, position: 'head', remark: '', kind: 'rule', type: 'DOMAIN', value: 'x.com', policy: 'DIRECT', order: 0 },
+      { id: 's', enabled: true, position: 'head', remark: 'reddit', kind: 'set', rules: 'DOMAIN-SUFFIX,reddit.com\nDOMAIN-SUFFIX,redd.it,REJECT', policy: 'reddit', order: 1 },
+      { id: 'off', enabled: false, position: 'tail', remark: 'off', kind: 'set', rules: 'DOMAIN,y.com,DIRECT', policy: '', order: 2 },
+    ]
+    const e = expandCustomRules(list)
+    expect(e.map((r) => `${r.type},${r.value},${r.policy}`)).toEqual(['DOMAIN,x.com,DIRECT', 'DOMAIN-SUFFIX,reddit.com,reddit', 'DOMAIN-SUFFIX,redd.it,REJECT'])
+    const back = yamlToRules(rulesToYaml(list), list, () => 'new')
+    const set = back.find((r) => r.kind === 'set' && r.enabled)!
+    expect(set).toMatchObject({ id: 's', remark: 'reddit', policy: 'reddit', position: 'head' })
+    expect(expandCustomRules(back).map((r) => r.value)).toEqual(['x.com', 'reddit.com', 'redd.it'])
+    expect(back.find((r) => r.id === 'off')?.enabled).toBe(false)
+    const y = YAML.parse(generateClash({ nodes: mkNodes(), subscriptions: [], templates: [], customRules: e, settings }, profile()).text)
+    expect(y.rules.slice(0, 3)).toEqual(['DOMAIN,x.com,DIRECT', 'DOMAIN-SUFFIX,reddit.com,reddit', 'DOMAIN-SUFFIX,redd.it,REJECT'])
+    expect(y['proxy-groups'].some((g: any) => g.name === 'reddit')).toBe(true)
   })
 })

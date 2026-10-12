@@ -39,6 +39,8 @@ export interface Node {
   enabled: boolean
   tags: string[]
   createdAt: number
+  /** 手动设置的国旗（ISO 3166 两位代码，如 JP）。输出时加在节点名前，地区分组也以它为准 */
+  flag?: string
   /** 最近一次测速结果（ms），-1 表示失败 */
   latency?: number
   latencyAt?: number
@@ -118,14 +120,16 @@ export type RuleType = (typeof RULE_TYPES)[number]
 
 export type RulePosition = 'head' | 'tail'
 
-/** 自定义规则：一条普通规则，或一个规则集(rule-provider) */
+/** 自定义规则：一条普通规则 / 一组规则（规则集）/ 一个远程规则集(rule-provider) */
 export interface CustomRule {
   id: string
   enabled: boolean
   position: RulePosition
   /** 备注 */
   remark: string
-  kind: 'rule' | 'ruleset'
+  kind: 'rule' | 'set' | 'ruleset'
+  // kind = set：多行规则，每行「类型,值[,策略][,no-resolve]」，省略策略时使用 policy
+  rules?: string
   // kind = rule
   type?: RuleType
   value?: string
@@ -217,7 +221,7 @@ export interface Profile {
   regionGroups: boolean
   /** 分流组里是否列出全部节点（可单独指定节点） */
   groupsIncludeNodes: boolean
-  /** 节点名前自动加国旗 */
+  /** 节点名前加上节点页手动设置的国旗 */
   addFlags: boolean
   /** 下发 subscription-userinfo：汇总所选外部订阅的流量信息 */
   trafficInfo: boolean

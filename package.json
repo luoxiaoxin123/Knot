@@ -39,6 +39,7 @@
     "@uiw/react-codemirror": "^4.25.12",
     "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.6",
+    "country-flag-emoji-polyfill": "^0.1.10",
     "diff": "^9.0.0",
     "esbuild": "^0.28.2",
     "lucide-react": "^1.55.0",

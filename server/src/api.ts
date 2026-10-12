@@ -3,6 +3,7 @@ import YAML from 'yaml'
 import { randomBytes } from 'node:crypto'
 import type { AccessControl, CustomGroup, CustomRule, Node, Profile, RuleTemplate, Share, Subscription } from '../../shared/types.ts'
 import { RULE_TYPES } from '../../shared/types.ts'
+import { parseRuleLines } from '../../shared/rules-yaml.ts'
 import { db, defaultAccess, newProfile } from './db.ts'
 import {
   clearFailures,
@@ -252,6 +253,7 @@ api.put('/nodes/:id', async (c) => {
   if (typeof body.name === 'string' && body.name.trim()) n.name = body.name.trim()
   if (typeof body.enabled === 'boolean') n.enabled = body.enabled
   if (Array.isArray(body.tags)) n.tags = body.tags.map(String)
+  if (body.flag !== undefined) setFlag(n, body.flag)
   if (body.proxyYaml !== undefined && n.source.kind !== 'chain') {
     try {
       const p = YAML.parse(String(body.proxyYaml))
@@ -270,6 +272,13 @@ api.put('/nodes/:id', async (c) => {
   return c.json(nodeView(n))
 })
 
+/** 国旗只接受两位国家代码，空值表示清除 */
+function setFlag(n: Node, flag: unknown) {
+  const code = String(flag || '').trim().toUpperCase()
+  if (/^[A-Z]{2}$/.test(code)) n.flag = code
+  else delete n.flag
+}
+
 function dependents(ids: Set<string>): Node[] {
   return db.data.nodes.filter(
     (n) => n.source.kind === 'chain' && !ids.has(n.id) && (ids.has(n.source.targetId) || ids.has(n.source.relayId)),
@@ -277,7 +286,7 @@ function dependents(ids: Set<string>): Node[] {
 }
 
 api.post('/nodes/batch', async (c) => {
-  const { action, ids, tags } = await c.req.json()
+  const { action, ids, tags, flag } = await c.req.json()
   const set = new Set<string>(ids || [])
   if (action === 'delete') {
     const deps = dependents(set)
@@ -291,6 +300,7 @@ api.post('/nodes/batch', async (c) => {
     if (action === 'disable') n.enabled = false
     if (action === 'tag' && Array.isArray(tags)) n.tags = [...new Set([...n.tags, ...tags])]
     if (action === 'untag') n.tags = []
+    if (action === 'flag') setFlag(n, flag)
   }
   db.save()
   return c.json({ ok: true })
@@ -484,17 +494,25 @@ api.get('/rules/custom', (c) => c.json(db.data.customRules))
 api.put('/rules/custom', async (c) => {
   const list = await c.req.json()
   if (!Array.isArray(list)) return c.json(bad('格式错误'), 400)
-  db.data.customRules = list.map((r: any, i: number) => {
+  const errors: string[] = []
+  const next = list.map((r: any, i: number) => {
+    const kind: CustomRule['kind'] = r.kind === 'ruleset' || r.kind === 'set' ? r.kind : 'rule'
     const rule: CustomRule = {
       id: r.id || uid(),
       enabled: r.enabled !== false,
       position: r.position === 'tail' ? 'tail' : 'head',
       remark: String(r.remark || ''),
-      kind: r.kind === 'ruleset' ? 'ruleset' : 'rule',
-      policy: String(r.policy || '🚀 节点选择').trim(),
+      kind,
+      policy: String(r.policy || (kind === 'set' ? '' : '🚀 节点选择')).trim(),
       order: i,
     }
-    if (rule.kind === 'rule') {
+    if (kind === 'set') {
+      rule.rules = String(r.rules || '')
+      if (!rule.remark.trim()) errors.push('规则集需要填写名称')
+      const parsed = parseRuleLines(rule.rules, rule.policy)
+      if (parsed.errors.length) errors.push(`规则集「${rule.remark}」：${parsed.errors[0]}`)
+      else if (!parsed.rules.length) errors.push(`规则集「${rule.remark}」没有任何规则`)
+    } else if (kind === 'rule') {
       rule.type = r.type
       rule.value = String(r.value || '').trim()
       if (r.noResolve) rule.noResolve = true
@@ -507,6 +525,8 @@ api.put('/rules/custom', async (c) => {
     }
     return rule
   })
+  if (errors.length) return c.json(bad(errors[0]), 400)
+  db.data.customRules = next
   db.save()
   return c.json(db.data.customRules)
 })

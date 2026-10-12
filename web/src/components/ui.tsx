@@ -318,6 +318,8 @@ export function Modal({
   children,
   footer,
   width = 'max-w-lg',
+  panelClass,
+  bodyClass,
 }: {
   open: boolean
   onClose: () => void
@@ -325,6 +327,8 @@ export function Modal({
   children: ReactNode
   footer?: ReactNode
   width?: string
+  panelClass?: string
+  bodyClass?: string
 }) {
   useEffect(() => {
     if (!open) return
@@ -345,6 +349,7 @@ export function Modal({
         className={cx(
           'relative flex max-h-[92vh] w-full flex-col rounded-t-xl border border-zinc-200 bg-white shadow-xl sm:rounded-xl dark:border-zinc-800 dark:bg-zinc-900',
           width,
+          panelClass,
         )}
       >
         <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
@@ -353,7 +358,7 @@ export function Modal({
             <X className="size-4" />
           </IconButton>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>
+        <div className={cx('min-h-0 flex-1 overflow-y-auto px-4 py-4', bodyClass)}>{children}</div>
         {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">{footer}</div>}
       </div>
     </div>,
