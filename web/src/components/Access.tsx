@@ -59,7 +59,7 @@ export function AccessEditor({ value, onChange }: { value: AccessControl; onChan
           />
         </div>
       </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="最多拉取次数" hint="0 为不限。客户端每次更新订阅算一次">
           <div className="flex items-center gap-2">
             <Input type="number" min={0} value={value.maxUses} onChange={(e) => set('maxUses', Math.max(0, Number(e.target.value) || 0))} />

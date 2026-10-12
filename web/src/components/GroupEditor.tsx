@@ -329,7 +329,7 @@ export function GroupEditor({
               )}
               <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
                 <SortableContext items={groups.map((g) => `col:${g.id}`)} strategy={rectSortingStrategy}>
-                  <div className="grid items-start gap-3" style={{ gridTemplateColumns: `repeat(${wide ? cols : 1}, minmax(0, 1fr))` }}>
+                  <div className="grid grid-cols-1 items-start gap-3" style={{ gridTemplateColumns: `repeat(${wide ? cols : 1}, minmax(0, 1fr))` }}>
                     {groups.map((g) => (
                       <GroupColumn
                         key={g.id}

@@ -121,7 +121,7 @@ function Editor({ initial }: { initial: Profile }) {
         <Button onClick={() => setPreview(true)}><Eye className="size-4" />预览配置</Button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="space-y-4">
           <Card>
             <CardHeader title="基本" />
@@ -159,7 +159,7 @@ function Editor({ initial }: { initial: Profile }) {
                 </div>
               )}
               {f.nodeMode === 'pick' && <NodePicker value={f.nodeIds} onChange={(v) => set('nodeIds', v)} />}
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="名称包含（正则）"><Input value={f.includeRegex} onChange={(e) => set('includeRegex', e.target.value)} placeholder="香港|日本" className="font-mono" /></Field>
                 <Field label="名称排除（正则）"><Input value={f.excludeRegex} onChange={(e) => set('excludeRegex', e.target.value)} placeholder="x\d+倍|游戏" className="font-mono" /></Field>
               </div>
@@ -204,7 +204,7 @@ function Editor({ initial }: { initial: Profile }) {
                       <Button key={p.id} size="sm" title={p.description} onClick={() => set('modules', p.modules)}>{p.name}</Button>
                     ))}
                   </div>
-                  <div className="grid gap-1 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
                     {meta.modules.map((m) => {
                       const on = m.required || f.modules.includes(m.id)
                       return (

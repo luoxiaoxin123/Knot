@@ -513,7 +513,7 @@ function RuleModal({
             autoFocus={!rule}
           />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="类型">
             <Select value={kind} onChange={(e) => changeKind(e.target.value as CustomRule['kind'])} disabled={!!rule}>
               <option value="rule">单条规则</option>
@@ -573,7 +573,7 @@ function RuleModal({
             <Field label="规则集链接" hint="Clash 规则集：.yaml / .list(text) / .mrs">
               <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/.../xxx.list" className="font-mono" />
             </Field>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="类型 behavior">
                 <Select value={behavior} onChange={(e) => setBehavior(e.target.value as any)}>
                   <option value="classical">classical（混合）</option>

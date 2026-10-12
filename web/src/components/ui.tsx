@@ -186,8 +186,8 @@ export type BadgeColor = keyof typeof badgeColors
 
 export function Badge({ children, color = 'zinc', className, title }: { children: ReactNode; color?: BadgeColor; className?: string; title?: string }) {
   return (
-    <span title={title} className={cx('inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[11px] font-medium leading-none', badgeColors[color], className)}>
-      {children}
+    <span title={title ?? (typeof children === 'string' ? children : undefined)} className={cx('inline-flex max-w-full shrink-0 items-center rounded px-1.5 py-0.5 text-[11px] font-medium leading-none', badgeColors[color], className)}>
+      <span className="min-w-0 truncate">{children}</span>
     </span>
   )
 }

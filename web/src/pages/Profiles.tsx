@@ -94,9 +94,9 @@ export default function ProfilesPage() {
             return (
               <Card key={p.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
-                  <div className="min-w-0">
+                  <div className="min-w-0 max-w-full">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{p.name}</span>
+                      <span className="min-w-0 font-medium wrap-anywhere">{p.name}</span>
                       <Badge color="blue">{count} 节点</Badge>
                       <Badge>{tpl ? `模板：${tpl.name}` : `${p.modules.length} 个分流模块`}</Badge>
                       {p.groupMode === 'custom' && <Badge color="violet">自定义分组</Badge>}

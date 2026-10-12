@@ -58,9 +58,9 @@ export default function SharesPage() {
               return (
                 <li key={s.id} className={cx('px-4 py-3', !st.ok && 'opacity-60')}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
+                    <div className="min-w-0 max-w-full">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{s.name}</span>
+                        <span className="min-w-0 font-medium wrap-anywhere">{s.name}</span>
                         <Badge color={st.color}>{st.label}</Badge>
                         {s.withRules && <Badge>含分流规则</Badge>}
                       </div>

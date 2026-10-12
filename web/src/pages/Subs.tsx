@@ -102,7 +102,7 @@ export default function SubsPage() {
           <Empty icon={<Rss className="size-8" />} title="还没有订阅源" desc="支持 Clash / mihomo YAML、Base64、分享链接列表与 sing-box JSON 格式的订阅。" action={<Button variant="primary" onClick={() => setEditing({})}><Plus className="size-4" />添加订阅</Button>} />
         </Card>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {subs.map((s) => (
             <Card key={s.id} className={cx('p-4', !s.enabled && 'opacity-60')}>
               <div className="flex items-start justify-between gap-3">
@@ -203,7 +203,7 @@ function SubModal({ sub, onClose, onDone }: { sub: Partial<Subscription>; onClos
         <Field label="订阅链接">
           <Input value={f.url} onChange={(e) => set('url', e.target.value)} placeholder="https://..." autoFocus={isNew} />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="名称" hint="留空使用域名">
             <Input value={f.name} onChange={(e) => set('name', e.target.value)} />
           </Field>
@@ -234,7 +234,7 @@ function SubModal({ sub, onClose, onDone }: { sub: Partial<Subscription>; onClos
         <Field label="节点名前缀" hint="例如「[机场A] 」，便于区分来源">
           <Input value={f.namePrefix} onChange={(e) => set('namePrefix', e.target.value)} />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="保留节点（正则）" hint="留空保留全部">
             <Input value={f.includeRegex} onChange={(e) => set('includeRegex', e.target.value)} placeholder="香港|日本|美国" className="font-mono" />
           </Field>

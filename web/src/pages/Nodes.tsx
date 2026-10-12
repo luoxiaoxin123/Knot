@@ -263,20 +263,20 @@ export default function NodesPage() {
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索名称 / 地址 / 协议 / 标签" className="pl-8" />
         </div>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex min-w-0 max-w-full flex-wrap gap-1">
           {filters.map((f) => (
             <button
               key={f.value}
               onClick={() => setFilter(f.value)}
               className={cx(
-                'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                'flex max-w-full items-center rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
                 filter === f.value
                   ? 'border-blue-600 bg-blue-600 text-white'
                   : 'border-zinc-300 bg-white text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300',
               )}
             >
-              {f.label}
-              <span className="ml-1 opacity-60">{counts[f.value] || 0}</span>
+              <span className="min-w-0 truncate">{f.label}</span>
+              <span className="ml-1 shrink-0 opacity-60">{counts[f.value] || 0}</span>
             </button>
           ))}
         </div>
@@ -599,7 +599,7 @@ function EditModal({ node, nodes, onClose, onDone }: { node: NodeView; nodes: No
       }
     >
       <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="名称"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label="标签" hint="多个用逗号分隔，可在订阅输出中按名称筛选"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field>
         </div>
@@ -675,9 +675,9 @@ function ChainModal({
         <div className="flex flex-wrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2.5 text-xs dark:bg-zinc-800/50">
           <span className="text-zinc-500">本机</span>
           <ArrowRight className="size-3.5 text-zinc-400" />
-          <span className={cx('font-medium', relay ? '' : 'text-zinc-400')}>{relay?.name || '选择中转节点'}</span>
+          <span className={cx('min-w-0 font-medium wrap-anywhere', relay ? '' : 'text-zinc-400')}>{relay?.name || '选择中转节点'}</span>
           <ArrowRight className="size-3.5 text-zinc-400" />
-          <span className="font-medium">{target.name}</span>
+          <span className="min-w-0 font-medium wrap-anywhere">{target.name}</span>
           <span className="text-zinc-500">（落地）</span>
           <ArrowRight className="size-3.5 text-zinc-400" />
           <span className="text-zinc-500">目标网站</span>

@@ -53,7 +53,7 @@ function SettingsForm({ initial }: { initial: SettingsView }) {
           <Field label="测速地址" hint="自动选择 / 地区分组的 URL 测试地址">
             <Input value={f.testUrl} onChange={(e) => set('testUrl', e.target.value)} />
           </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="规则集下载源" hint="内置分流模块的规则集地址">
               <Select value={f.ruleMirror} onChange={(e) => set('ruleMirror', e.target.value)}>
                 <option value="github">GitHub Raw（默认）</option>
@@ -138,7 +138,7 @@ function S3Card({ f, setS3, save }: { f: SettingsView; setS3: (k: string, v: any
       />
       <div className="space-y-4 p-4">
         <ToggleRow label="启用自动备份" checked={s3.enabled} onChange={(v) => setS3('enabled', v)} />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Endpoint" hint="例如 https://<account>.r2.cloudflarestorage.com、https://s3.us-east-1.amazonaws.com">
             <Input value={s3.endpoint} onChange={(e) => setS3('endpoint', e.target.value)} placeholder="https://..." />
           </Field>
@@ -264,7 +264,7 @@ function PasswordCard() {
   return (
     <Card>
       <CardHeader title="修改密码" />
-      <div className="grid gap-4 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+      <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
         <Field label="原密码"><Input type="password" value={oldPassword} onChange={(e) => setOld(e.target.value)} autoComplete="current-password" /></Field>
         <Field label="新密码"><Input type="password" value={newPassword} onChange={(e) => setNew(e.target.value)} autoComplete="new-password" /></Field>
         <Button onClick={submit} loading={loading} disabled={!oldPassword || !newPassword}>修改</Button>
