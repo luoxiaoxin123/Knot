@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { CheckCells } from '../components/CheckBadges'
 import { Flag, FlagPicker } from '../components/Flag'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link2, Pencil, Trash2, Plus, Gauge, Search, Copy, Server, ArrowRight, QrCode, Send, ScanSearch, Flag as FlagIcon } from 'lucide-react'
+import { Link2, Pencil, Trash2, Plus, Gauge, Search, Copy, Server, ArrowRight, QrCode, Send, ScanSearch, Flag as FlagIcon, FolderInput } from 'lucide-react'
 import YAML from 'yaml'
 import type { Subscription } from '@shared/types'
 import { api, copyText } from '../lib/api'
@@ -86,7 +86,12 @@ export function TypeBadge({ type }: { type: string }) {
   return <Badge color={TYPE_COLOR[type] || 'zinc'}>{TYPE_LABEL[type] || type}</Badge>
 }
 
-type Filter = 'all' | 'manual' | 'chain' | string
+type Filter = 'all' | 'chain' | string
+
+const DEFAULT_GROUP = 'default'
+const groupOf = (n: { group?: string }) => n.group || DEFAULT_GROUP
+/** 筛选用的 key：自建节点按分组（g:名称），链式为 chain，订阅节点为订阅 id */
+const filterKey = (n: NodeView) => (n.source.kind === 'manual' ? `g:${groupOf(n)}` : n.source.kind === 'chain' ? 'chain' : n.source.subId)
 
 export default function NodesPage() {
   const { data: nodes, isLoading } = useNodes()
@@ -112,9 +117,7 @@ export default function NodesPage() {
   const list = useMemo(() => {
     const kw = q.trim().toLowerCase()
     return (nodes || []).filter((n) => {
-      if (filter === 'manual' && n.source.kind !== 'manual') return false
-      if (filter === 'chain' && n.source.kind !== 'chain') return false
-      if (filter !== 'all' && filter !== 'manual' && filter !== 'chain' && !(n.source.kind === 'sub' && n.source.subId === filter)) return false
+      if (filter !== 'all' && filterKey(n) !== filter) return false
       if (!kw) return true
       return n.name.toLowerCase().includes(kw) || n.proxy.server?.toLowerCase().includes(kw) || n.proxy.type.includes(kw) || n.tags.some((t) => t.toLowerCase().includes(kw))
     })
@@ -219,17 +222,22 @@ export default function NodesPage() {
   }
 
   const counts = useMemo(() => {
-    const c = { all: nodes?.length || 0, manual: 0, chain: 0 } as Record<string, number>
-    for (const n of nodes || []) {
-      const k = n.source.kind === 'sub' ? n.source.subId : n.source.kind
-      c[k] = (c[k] || 0) + 1
-    }
+    const c = { all: nodes?.length || 0, chain: 0 } as Record<string, number>
+    for (const n of nodes || []) c[filterKey(n)] = (c[filterKey(n)] || 0) + 1
     return c
   }, [nodes])
 
-  const filters: { value: Filter; label: string }[] = [
+  /** 自建节点的分组（按首次出现的顺序），没有自建节点时也保留 default */
+  const groups = useMemo(() => {
+    const g = [...new Set((nodes || []).filter((n) => n.source.kind === 'manual').map(groupOf))]
+    return g.length ? g : [DEFAULT_GROUP]
+  }, [nodes])
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [moving, setMoving] = useState(false)
+
+  const filters: { value: Filter; label: string; group?: string }[] = [
     { value: 'all', label: '全部' },
-    { value: 'manual', label: '自建' },
+    ...groups.map((g) => ({ value: `g:${g}`, label: g, group: g })),
     { value: 'chain', label: '链式' },
     ...(subs || []).map((s) => ({ value: s.id, label: s.name })),
   ]
@@ -266,19 +274,25 @@ export default function NodesPage() {
         </div>
         <div className="flex min-w-0 max-w-full flex-wrap gap-1">
           {filters.map((f) => (
-            <button
+            <div
               key={f.value}
-              onClick={() => setFilter(f.value)}
               className={cx(
-                'flex max-w-full items-center rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                'flex max-w-full items-center rounded-full border text-xs font-medium transition-colors',
                 filter === f.value
                   ? 'border-blue-600 bg-blue-600 text-white'
                   : 'border-zinc-300 bg-white text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300',
               )}
             >
-              <span className="min-w-0 truncate">{f.label}</span>
-              <span className="ml-1 shrink-0 opacity-60">{counts[f.value] || 0}</span>
-            </button>
+              <button onClick={() => setFilter(f.value)} onDoubleClick={() => f.group && setRenaming(f.group)} className="flex min-w-0 items-center px-2.5 py-1" title={f.group ? '自建分组，双击可改名' : undefined}>
+                <span className="min-w-0 truncate">{f.label}</span>
+                <span className="ml-1 shrink-0 opacity-60">{counts[f.value] || 0}</span>
+              </button>
+              {f.group && filter === f.value && (
+                <button onClick={() => setRenaming(f.group!)} className="-ml-1 mr-1 rounded-full p-1 hover:bg-white/20" title="重命名分组" aria-label="重命名分组">
+                  <Pencil className="size-3" />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       </div>
@@ -296,6 +310,7 @@ export default function NodesPage() {
             toast(`已复制 ${uris.length} 条分享链接`)
           }}>复制链接</Button>
           <Button size="sm" onClick={() => setFlagFor({ ids: [...selected] })}><FlagIcon className="size-3.5" />设置旗帜</Button>
+          {[...selected].some((id) => byId.get(id)?.source.kind === 'manual') && <Button size="sm" onClick={() => setMoving(true)}><FolderInput className="size-3.5" />移动到分组</Button>}
           <Button size="sm" onClick={() => setSharing([...selected])}><Send className="size-3.5" />临时分享</Button>
           <Button size="sm" variant="danger" onClick={() => batch('delete')}>删除</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>取消选择</Button>
@@ -355,7 +370,36 @@ export default function NodesPage() {
         )}
       </Card>
 
-      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onDone={refresh} />
+      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onDone={refresh} groups={groups} initialGroup={filter.startsWith('g:') ? filter.slice(2) : groups[0]} />
+      {renaming !== null && (
+        <GroupNameModal
+          title={`重命名分组「${renaming}」`}
+          initial={renaming}
+          groups={groups}
+          hint="只影响自建节点的分组名；改成已有的分组名会把两个分组合并。"
+          onClose={() => setRenaming(null)}
+          onSave={async (to) => {
+            await api.post('/nodes/groups/rename', { from: renaming, to })
+            if (filter === `g:${renaming}`) setFilter(`g:${to}`)
+            setRenaming(null)
+            refresh()
+          }}
+        />
+      )}
+      {moving && (
+        <GroupNameModal
+          title="移动到分组"
+          initial={filter.startsWith('g:') ? filter.slice(2) : groups[0]}
+          groups={groups}
+          hint="只移动选中的自建节点；输入新名字会新建分组。"
+          onClose={() => setMoving(false)}
+          onSave={async (group) => {
+            await api.post('/nodes/batch', { action: 'group', ids: [...selected], group })
+            setMoving(false)
+            refresh()
+          }}
+        />
+      )}
       {editing && <EditModal node={editing} nodes={nodes || []} onClose={() => setEditing(null)} onDone={refresh} />}
       {chainFor && <ChainModal target={chainFor} nodes={nodes || []} subMap={subMap} onClose={() => setChainFor(null)} onDone={refresh} />}
       <QrModal open={!!qr} onClose={() => setQr(null)} title={qr?.title || ''} text={qr?.text || ''} />
@@ -399,7 +443,7 @@ function FlagButton({ own, inherited, onClick }: { own?: string; inherited?: str
 }
 
 function sourceLabel(n: NodeView, subMap: Map<string, Subscription>) {
-  if (n.source.kind === 'manual') return <Badge>自建</Badge>
+  if (n.source.kind === 'manual') return <Badge>{groupOf(n)}</Badge>
   if (n.source.kind === 'chain') return <Badge color="violet">链式</Badge>
   const s = subMap.get(n.source.subId)
   return <Badge color="zinc" title={s?.url}>{s?.name || '订阅'}</Badge>
@@ -493,8 +537,12 @@ function NodeRow({
 
 // ------------------------------------------------------------------ 导入
 
-function ImportModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+function ImportModal({ open, onClose, onDone, groups, initialGroup }: { open: boolean; onClose: () => void; onDone: () => void; groups: string[]; initialGroup: string }) {
   const [text, setText] = useState('')
+  const [group, setGroup] = useState(initialGroup)
+  useEffect(() => {
+    if (open) setGroup(initialGroup)
+  }, [open, initialGroup])
   const [loading, setLoading] = useState(false)
   const [preview, setPreview] = useState<{ count: number; errors: string[]; names: string[] } | null>(null)
   const toast = useToast()
@@ -506,7 +554,7 @@ function ImportModal({ open, onClose, onDone }: { open: boolean; onClose: () => 
   const submit = async () => {
     setLoading(true)
     try {
-      const r = await api.post<{ added: number; errors: string[] }>('/nodes/import', { text })
+      const r = await api.post<{ added: number; errors: string[] }>('/nodes/import', { text, group })
       toast(`已导入 ${r.added} 个节点${r.errors.length ? `，${r.errors.length} 条解析失败` : ''}`, r.added ? 'ok' : 'error')
       if (r.added) {
         setText('')
@@ -548,6 +596,9 @@ function ImportModal({ open, onClose, onDone }: { open: boolean; onClose: () => 
           }}
           placeholder={'vless://uuid@1.2.3.4:443?security=reality&...#香港\nhysteria2://password@hy.example.com:443?sni=...#日本'}
         />
+        <Field label="分组" hint="选择已有分组，或输入新名字新建分组">
+          <GroupInput value={group} onChange={setGroup} groups={groups} />
+        </Field>
         {preview && (
           <div className="rounded-md bg-zinc-50 p-3 text-xs dark:bg-zinc-800/50">
             <div className="font-medium">识别到 {preview.count} 个节点</div>
@@ -566,6 +617,8 @@ function EditModal({ node, nodes, onClose, onDone }: { node: NodeView; nodes: No
   const toast = useToast()
   const [name, setName] = useState(node.name)
   const [tags, setTags] = useState(node.tags.join(', '))
+  const [group, setGroup] = useState(groupOf(node))
+  const groupList = useMemo(() => [...new Set(nodes.filter((n) => n.source.kind === 'manual').map(groupOf))], [nodes])
   const { name: _n, ...rest } = node.proxy
   const [yaml, setYaml] = useState(() => YAML.stringify({ name: node.name, ...rest }, { lineWidth: 0 }))
   const chain = node.source.kind === 'chain' ? node.source : null
@@ -576,6 +629,7 @@ function EditModal({ node, nodes, onClose, onDone }: { node: NodeView; nodes: No
     setLoading(true)
     try {
       const body: any = { name, tags: tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean) }
+      if (node.source.kind === 'manual') body.group = group
       if (!chain && !isSub) body.proxyYaml = yaml
       if (chain) body.relayId = relayId
       await api.put(`/nodes/${node.id}`, body)
@@ -604,6 +658,7 @@ function EditModal({ node, nodes, onClose, onDone }: { node: NodeView; nodes: No
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="名称"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label="标签" hint="多个用逗号分隔，可在订阅输出中按名称筛选"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field>
+          {node.source.kind === 'manual' && <Field label="分组"><GroupInput value={group} onChange={setGroup} groups={groupList} /></Field>}
         </div>
         {chain ? (
           <Field label="中转节点" hint="落地节点不可修改，如需更换请新建链式节点">
@@ -717,6 +772,83 @@ function ChainModal({
           链式代理会以 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">dialer-proxy</code>（mihomo）/ <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">detour</code>（sing-box）输出；中转节点即使未被订阅输出选中也会自动写入配置。V2Ray 格式无法表达链式代理，会自动跳过。
         </p>
       </div>
+    </Modal>
+  )
+}
+
+// ------------------------------------------------------------------ 分组
+
+/** 分组输入：可从已有分组中选择，也可以直接输入新名字 */
+function GroupInput({ value, onChange, groups }: { value: string; onChange: (v: string) => void; groups: string[] }) {
+  return (
+    <div className="space-y-1.5">
+      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={DEFAULT_GROUP} maxLength={40} />
+      {groups.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {groups.map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => onChange(g)}
+              className={cx(
+                'max-w-full truncate rounded border px-1.5 py-0.5 text-[11px]',
+                value === g ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' : 'border-zinc-200 text-zinc-600 hover:border-blue-400 dark:border-zinc-700 dark:text-zinc-400',
+              )}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GroupNameModal({
+  title,
+  initial,
+  groups,
+  hint,
+  onClose,
+  onSave,
+}: {
+  title: string
+  initial: string
+  groups: string[]
+  hint: string
+  onClose: () => void
+  onSave: (name: string) => Promise<void>
+}) {
+  const [name, setName] = useState(initial)
+  const [saving, setSaving] = useState(false)
+  const toast = useToast()
+  const save = async () => {
+    if (!name.trim()) return toast('分组名不能为空', 'error')
+    setSaving(true)
+    try {
+      await onSave(name.trim())
+    } catch (e: any) {
+      toast(e.message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={title}
+      width="max-w-md"
+      footer={
+        <>
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" onClick={save} loading={saving}>保存</Button>
+        </>
+      }
+    >
+      <Field label="分组名称" hint={hint}>
+        <GroupInput value={name} onChange={setName} groups={groups} />
+      </Field>
     </Modal>
   )
 }

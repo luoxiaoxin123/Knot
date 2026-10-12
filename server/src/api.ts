@@ -222,13 +222,15 @@ api.get('/nodes', (c) => c.json(db.data.nodes.map(nodeView)))
 
 /** 粘贴导入：分享链接 / base64 / Clash YAML / sing-box JSON */
 api.post('/nodes/import', async (c) => {
-  const { text, tags } = await c.req.json()
+  const { text, tags, group } = await c.req.json()
   const r = parseSubscription(String(text ?? ''))
+  const g = groupName(group)
   const added: Node[] = r.proxies.map((p) => ({
     id: uid(),
     name: p.name,
     proxy: p,
     source: { kind: 'manual' },
+    ...(g !== DEFAULT_GROUP ? { group: g } : {}),
     enabled: true,
     tags: Array.isArray(tags) ? tags : [],
     createdAt: Date.now(),
@@ -254,6 +256,7 @@ api.put('/nodes/:id', async (c) => {
   if (typeof body.enabled === 'boolean') n.enabled = body.enabled
   if (Array.isArray(body.tags)) n.tags = body.tags.map(String)
   if (body.flag !== undefined) setFlag(n, body.flag)
+  if (body.group !== undefined && n.source.kind === 'manual') setGroup(n, body.group)
   if (body.proxyYaml !== undefined && n.source.kind !== 'chain') {
     try {
       const p = YAML.parse(String(body.proxyYaml))
@@ -272,6 +275,32 @@ api.put('/nodes/:id', async (c) => {
   return c.json(nodeView(n))
 })
 
+const DEFAULT_GROUP = 'default'
+function groupName(v: unknown) {
+  return String(v ?? '').trim().slice(0, 40) || DEFAULT_GROUP
+}
+function setGroup(n: Node, v: unknown) {
+  const g = groupName(v)
+  if (g === DEFAULT_GROUP) delete n.group
+  else n.group = g
+}
+
+/** 重命名自建节点分组（改名为已有分组 = 合并） */
+api.post('/nodes/groups/rename', async (c) => {
+  const { from, to } = await c.req.json()
+  const a = groupName(from)
+  const b = String(to ?? '').trim().slice(0, 40)
+  if (!b) return c.json(bad('分组名不能为空'), 400)
+  let count = 0
+  for (const n of db.data.nodes) {
+    if (n.source.kind !== 'manual' || groupName(n.group) !== a) continue
+    setGroup(n, b)
+    count++
+  }
+  db.save()
+  return c.json({ ok: true, count })
+})
+
 /** 旗帜只接受两位地区代码，空值表示清除 */
 function setFlag(n: Node, flag: unknown) {
   const code = String(flag || '').trim().toUpperCase()
@@ -286,7 +315,7 @@ function dependents(ids: Set<string>): Node[] {
 }
 
 api.post('/nodes/batch', async (c) => {
-  const { action, ids, tags, flag } = await c.req.json()
+  const { action, ids, tags, flag, group } = await c.req.json()
   const set = new Set<string>(ids || [])
   if (action === 'delete') {
     const deps = dependents(set)
@@ -301,6 +330,7 @@ api.post('/nodes/batch', async (c) => {
     if (action === 'tag' && Array.isArray(tags)) n.tags = [...new Set([...n.tags, ...tags])]
     if (action === 'untag') n.tags = []
     if (action === 'flag') setFlag(n, flag)
+    if (action === 'group' && n.source.kind === 'manual') setGroup(n, group)
   }
   db.save()
   return c.json({ ok: true })
