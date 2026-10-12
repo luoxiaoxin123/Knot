@@ -35,7 +35,7 @@ describe('migrate', () => {
     expect(again.subscriptions).toBe(0)
   })
 
-  it('miaomiaowu sqlite', () => {
+  it('miaomiaowu sqlite', async () => {
     const file = join(process.env.DATA_DIR!, 'traffic.db')
     const d = new DatabaseSync(file)
     d.exec(`CREATE TABLE nodes (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, raw_url TEXT, node_name TEXT, protocol TEXT, parsed_config TEXT, clash_config TEXT, enabled INTEGER DEFAULT 1, tag TEXT DEFAULT '手动输入', tags TEXT DEFAULT '[]', chain_proxy_node_id INTEGER, relay_group_name TEXT, relay_group_node_ids TEXT);
@@ -50,7 +50,7 @@ describe('migrate', () => {
     d.prepare('INSERT INTO external_subscriptions (username, name, url, user_agent) VALUES (?,?,?,?)').run('admin', '我的机场', 'https://mmw-air.example.com/sub', 'clash-meta/2.4.0')
     d.close()
     const nodesBefore = db.data.nodes.length
-    const r = importMiaomiaowu(readFileSync(file))
+    const r = await importMiaomiaowu(readFileSync(file))
     expect(r).toMatchObject({ subscriptions: 1, nodes: 2, chains: 1 })
     const added = db.data.nodes.slice(0).filter((n: any) => ['中转', '落地', '落地-链', '机场节点'].includes(n.name))
     expect(added.map((n: any) => n.name).sort()).toEqual(['中转', '落地', '落地-链'])
@@ -60,6 +60,6 @@ describe('migrate', () => {
     expect(byName('落地').proxy['dialer-proxy']).toBeUndefined()
     expect(db.data.nodes.length).toBe(nodesBefore + 3)
     expect(r.skipped.join()).toContain('外部订阅同步')
-    expect(() => importMiaomiaowu(Buffer.from('not a db'))).toThrow(/SQLite/)
+    await expect(importMiaomiaowu(Buffer.from('not a db'))).rejects.toThrow(/SQLite/)
   })
 })

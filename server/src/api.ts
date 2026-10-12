@@ -51,7 +51,11 @@ const bad = (msg: string) => ({ error: msg })
 
 // ------------------------------- 认证 -------------------------------
 
-api.get('/auth/status', (c) => c.json({ setup: !!db.data.auth.passwordHash, authed: isAuthed(c), passkey: hasPasskeyFor(c) }))
+const VERSION = process.env.KNOT_VERSION || 'dev'
+
+api.get('/auth/status', (c) =>
+  c.json({ setup: !!db.data.auth.passwordHash, authed: isAuthed(c), passkey: hasPasskeyFor(c), version: VERSION }),
+)
 
 api.post('/auth/setup', async (c) => {
   if (db.data.auth.passwordHash) return c.json(bad('已初始化'), 400)
@@ -988,7 +992,7 @@ api.post('/migrate/miaomiaowu', async (c) => {
   if (buf.length > 200 * 1024 * 1024) return c.json(bad('文件过大'), 400)
   const before = capture('nodes')
   try {
-    const report = importMiaomiaowu(buf, { includeSynced: c.req.query('includeSynced') === '1' })
+    const report = await importMiaomiaowu(buf, { includeSynced: c.req.query('includeSynced') === '1' })
     commit('nodes', undefined, '从妙妙屋迁移', before)
     logReq(c, 'admin', 'migration', true, { detail: `妙妙屋：${report.subscriptions} 个订阅、${report.nodes} 个节点、${report.chains} 个链式节点` })
     return c.json(report)

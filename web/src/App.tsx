@@ -34,7 +34,7 @@ function Logo() {
   )
 }
 
-function Shell({ children }: { children: ReactNode }) {
+function Shell({ children, version }: { children: ReactNode; version?: string }) {
   const [open, setOpen] = useState(false)
   const loc = useLocation()
   const qc = useQueryClient()
@@ -72,6 +72,7 @@ function Shell({ children }: { children: ReactNode }) {
         </div>
         {nav}
         <div className="mt-auto">
+          {version && <div className="px-2.5 pb-2 text-[11px] text-zinc-400">版本 {version}</div>}
           <button onClick={logout} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100">
             <LogOut className="size-4" />
             退出登录
@@ -186,7 +187,7 @@ function AuthScreen({ setup, passkey }: { setup: boolean; passkey: boolean }) {
 
 export default function App() {
   const qc = useQueryClient()
-  const auth = useQuery({ queryKey: ['auth'], queryFn: () => api.get<{ setup: boolean; authed: boolean; passkey: boolean }>('/auth/status') })
+  const auth = useQuery({ queryKey: ['auth'], queryFn: () => api.get<{ setup: boolean; authed: boolean; passkey: boolean; version: string }>('/auth/status') })
   useEffect(() => {
     const fn = () => qc.invalidateQueries({ queryKey: ['auth'] })
     window.addEventListener('sw:unauthorized', fn)
@@ -201,7 +202,7 @@ export default function App() {
   }
   if (!auth.data?.authed) return <AuthScreen setup={!!auth.data?.setup} passkey={!!auth.data?.passkey} />
   return (
-    <Shell>
+    <Shell version={auth.data.version}>
       <Routes>
         <Route path="/" element={<Navigate to="/nodes" replace />} />
         <Route path="/nodes" element={<NodesPage />} />

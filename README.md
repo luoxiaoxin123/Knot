@@ -138,7 +138,7 @@ docker run -d --name knot --restart unless-stopped \
   ghcr.io/luoxiaoxin123/knot:latest
 ```
 
-> 镜像由 GitHub Actions 在推送到 main 分支后自动构建（amd64 / arm64）。首次使用需要在 GitHub 仓库的 Packages 中把镜像设为 Public，或先 `docker login ghcr.io`。
+> 镜像由 GitHub Actions 在推送版本 tag 后自动构建（amd64 / arm64），见下方「发布新版本」。首次发布后需要在 GitHub 的 Packages 中把 `knot` 镜像设为 Public，否则服务器拉取前要先 `docker login ghcr.io`。
 
 ### 从源码运行
 
@@ -227,6 +227,30 @@ server {
 ## 资源占用
 
 实测（Node 22，节点数 23 / 1000）：空闲约 78MB；1000 个节点连续生成 90 次订阅后约 100MB（Docker 镜像默认用 `--max-old-space-size=128` 限制 V8 堆，不加限制时峰值会到 200MB 左右，但速度相同）。1000 个节点生成一次 Clash 配置约 80ms。真实测速 / 解锁检测时会临时启动一个 mihomo 进程，结束后退出。
+
+## 发布新版本
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+推送 `v*` tag 后，`Docker` 工作流会先跑测试，再构建 amd64 / arm64 镜像推送到 `ghcr.io/<用户名>/knot`：
+
+| tag | 生成的镜像标签 |
+|---|---|
+| `v1.2.3` | `1.2.3`、`1.2`、`1`、`latest` |
+| `v1.3.0-beta.1`（预发布） | `1.3.0-beta.1`（不更新 `latest`） |
+
+也可以在 Actions 页面手动运行 `Docker` 工作流，构建指定标签（例如 `dev`）的镜像。版本号会显示在面板左下角。
+
+推送到 main 或提交 PR 时，`CI` 工作流会运行类型检查、单元测试、构建，并验证 Docker 镜像能正常构建和启动（不推送）。
+
+服务器更新：
+
+```bash
+docker compose pull && docker compose up -d
+```
 
 ## 开发
 

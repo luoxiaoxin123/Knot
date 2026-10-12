@@ -13,8 +13,10 @@ COPY scripts/fetch-mihomo.mjs /fetch-mihomo.mjs
 RUN node /fetch-mihomo.mjs "$MIHOMO_VERSION" /mihomo
 
 FROM node:22-alpine
+ARG VERSION=dev
 WORKDIR /app
-ENV NODE_ENV=production \
+ENV KNOT_VERSION=$VERSION \
+    NODE_ENV=production \
     PORT=3000 \
     DATA_DIR=/data
 COPY package.json package-lock.json ./

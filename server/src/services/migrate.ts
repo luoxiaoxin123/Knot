@@ -1,5 +1,5 @@
 // 从 Sub-Store / 妙妙屋（miaomiaowu）迁移
-import { DatabaseSync } from 'node:sqlite'
+import type { DatabaseSync } from 'node:sqlite'
 import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Node, Proxy, Subscription } from '../../../shared/types.ts'
@@ -137,8 +137,10 @@ function cols(d: DatabaseSync, table: string): Set<string> {
   }
 }
 
-export function importMiaomiaowu(file: Buffer, opts: { includeSynced?: boolean } = {}): MigrateReport {
+export async function importMiaomiaowu(file: Buffer, opts: { includeSynced?: boolean } = {}): Promise<MigrateReport> {
   if (file.subarray(0, 16).toString('latin1') !== 'SQLite format 3\u0000') throw new Error('不是 SQLite 数据库文件（请上传妙妙屋数据目录里的 traffic.db）')
+  // 按需加载：node:sqlite 仍是实验特性，避免启动时打印警告
+  const { DatabaseSync } = await import('node:sqlite')
   const tmp = join(DATA_DIR, `migrate-${uid()}.db`)
   writeFileSync(tmp, file)
   const d = new DatabaseSync(tmp, { readOnly: true })
