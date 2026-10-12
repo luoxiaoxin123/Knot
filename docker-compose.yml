@@ -1,0 +1,16 @@
+services:
+  switch:
+    build: .
+    container_name: switch
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=Asia/Shanghai
+      # 可选：首次启动时直接设置管理员密码（否则在网页上初始化）
+      # - ADMIN_PASSWORD=change-me
+      # 可选：服务器拉取订阅需要走代理时
+      # - NODE_USE_ENV_PROXY=1
+      # - HTTPS_PROXY=http://127.0.0.1:7890
