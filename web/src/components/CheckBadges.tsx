@@ -8,6 +8,7 @@ const SERVICES: { key: UnlockService; label: string; name: string }[] = [
   { key: 'gemini', label: 'Gemini', name: 'Gemini' },
   { key: 'netflix', label: 'NF', name: 'Netflix' },
   { key: 'youtube', label: 'YT', name: 'YouTube Premium' },
+  { key: 'reddit', label: 'Reddit', name: 'Reddit' },
 ]
 
 const STATUS = {

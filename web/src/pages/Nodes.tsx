@@ -76,6 +76,7 @@ function transportOf(n: NodeView): string | null {
 function Latency({ n }: { n: NodeView }) {
   if (n.latency === undefined) return <span className="text-zinc-400">—</span>
   const title = `${n.latencyKind === 'real' ? '内核真实延迟' : 'TCP 握手延迟'}${n.latencyAt ? ` · ${new Date(n.latencyAt).toLocaleString()}` : ''}`
+  if (n.latency < 0 && n.check?.relayDown) return <span className="text-amber-600" title={`${title}\n${n.check.error}`}>中转不通</span>
   if (n.latency < 0) return <span className="text-red-500" title={n.check?.error ? `${title}\n${n.check.error}` : title}>不可用</span>
   const c = n.latency < 200 ? 'text-emerald-600' : n.latency < 500 ? 'text-amber-600' : 'text-red-500'
   return <span className={cx('tabular-nums', c)} title={title}>{n.latency} ms</span>
@@ -242,7 +243,7 @@ export default function NodesPage() {
           <>
             <Button onClick={() => runTest(list.map((n) => n.id))} loading={testing} disabled={!list.length} title={hasCore ? '使用 mihomo 内核测试真实延迟' : '未检测到 mihomo 内核，使用 TCP 握手延迟'}>
               <Gauge className="size-4" />
-              {hasCore ? '测速' : 'TCP 测速'}
+              {hasCore ? '延迟测试' : 'TCP 延迟测试'}
             </Button>
             {hasCore && (
               <Button onClick={() => runUnlock(list.filter((n) => n.enabled).map((n) => n.id))} loading={checking} disabled={!list.length} title="检测出口 IP 与 ChatGPT / Claude / Gemini / Netflix / YouTube 解锁">
@@ -287,7 +288,7 @@ export default function NodesPage() {
           <span className="mr-1 font-medium">已选 {selected.size} 个</span>
           <Button size="sm" onClick={() => batch('enable')}>启用</Button>
           <Button size="sm" onClick={() => batch('disable')}>停用</Button>
-          <Button size="sm" onClick={() => runTest([...selected])} loading={testing}>测速</Button>
+          <Button size="sm" onClick={() => runTest([...selected])} loading={testing}>延迟测试</Button>
           {hasCore && <Button size="sm" onClick={() => runUnlock([...selected])} loading={checking}>解锁检测</Button>}
           <Button size="sm" onClick={async () => {
             const uris = [...selected].map((id) => byId.get(id)?.uri).filter(Boolean)
@@ -475,14 +476,15 @@ function NodeRow({
         <div className="flex items-center justify-end gap-0.5">
           <Switch checked={n.enabled} onChange={onEnabled} title={n.enabled ? '已启用' : '已停用'} />
           <span className="w-1" />
-          {!chain && <IconButton title="配置链式代理" onClick={onChain}><Link2 className="size-4" /></IconButton>}
+          {/* 没有的按钮用等宽占位，保证每行的开关和按钮上下对齐 */}
+          {!chain ? <IconButton title="配置链式代理" onClick={onChain}><Link2 className="size-4" /></IconButton> : <span className="size-7 shrink-0" />}
           <span className="hidden items-center gap-0.5 sm:flex">
             <IconButton title="复制分享链接" onClick={onCopy} disabled={!n.uri}><Copy className="size-4" /></IconButton>
             <IconButton title="二维码" onClick={onQr} disabled={!n.uri}><QrCode className="size-4" /></IconButton>
             <IconButton title="临时分享" onClick={onShare}><Send className="size-4" /></IconButton>
           </span>
           <IconButton title="编辑" onClick={onEdit}><Pencil className="size-4" /></IconButton>
-          {n.source.kind !== 'sub' && <IconButton title="删除" onClick={onDelete} className="hover:text-red-600"><Trash2 className="size-4" /></IconButton>}
+          {n.source.kind !== 'sub' ? <IconButton title="删除" onClick={onDelete} className="hover:text-red-600"><Trash2 className="size-4" /></IconButton> : <span className="size-7 shrink-0" />}
         </div>
       </td>
     </tr>

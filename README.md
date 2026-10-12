@@ -14,7 +14,7 @@
 - 粘贴导入：`vless` `vmess` `trojan` `ss`（含 SS2022 / obfs / v2ray-plugin）`ssr` `hysteria2`（含端口跳跃）`hysteria` `tuic` `anytls` `wireguard` `socks5` `http` 分享链接，Base64 订阅内容，Clash YAML，sing-box JSON
 - 节点启用 / 停用、标签、批量操作、复制分享链接、二维码、YAML 直接编辑
 - **真实延迟测试**：调用 mihomo 内核经节点实际请求测速，支持 Hysteria2 / TUIC 等 UDP 协议和链式代理（没有内核时退回 TCP 握手延迟）
-- **解锁检测**：检测落地出口 IP / 地区，以及 ChatGPT（网页 / App）、Claude、Gemini、Netflix（全解锁 / 仅自制剧）、YouTube Premium 是否可用
+- **解锁检测**：检测落地出口 IP / 地区，以及 ChatGPT（网页 / App）、Claude、Gemini、Netflix（全解锁 / 仅自制剧）、YouTube Premium、Reddit 是否可用
   - Claude：只看 claude.ai 是否跳转到「地区不可用」页面，不按 IP 归属地判断，DNS 解锁也能正确识别；遇到 Cloudflare 人机验证但没有跳转，同样判定可用
   - Gemini：按页面里 Google 服务器识别的地区判断（这是 Google 实际看到的出口，DNS 解锁同样适用；不支持的地区：中国内地、香港、澳门、俄罗斯、白俄罗斯、古巴、伊朗、朝鲜、叙利亚）
   - 拿不到足够信息时显示「无法判断」，不会误报为不可用

@@ -62,9 +62,11 @@ export interface NodeCheck {
   country?: string
   unlock?: Partial<Record<UnlockService, { status: UnlockStatus; region?: string; note?: string }>>
   error?: string
+  /** 链式节点不通，且其中转从服务器也连不上：服务器测不了这条链路 */
+  relayDown?: boolean
 }
 
-export const UNLOCK_SERVICES = ['chatgpt', 'claude', 'gemini', 'netflix', 'youtube'] as const
+export const UNLOCK_SERVICES = ['chatgpt', 'claude', 'gemini', 'netflix', 'youtube', 'reddit'] as const
 export type UnlockService = (typeof UNLOCK_SERVICES)[number]
 
 export interface SubTraffic {

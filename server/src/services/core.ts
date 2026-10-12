@@ -120,20 +120,37 @@ export async function checkNodes(ids: string[], opts: CheckOptions): Promise<Rec
     }
 
     const testUrl = db.data.settings.testUrl
-    const results: Record<string, NodeCheck> = {}
-    await pool(targets, 16, async (id) => {
-      const name = resolved.nameOf.get(id)!
-      const r: NodeCheck = { at: Date.now(), delay: -1 }
+    const delayOf = async (name: string): Promise<{ delay: number; error?: string }> => {
       try {
         const res = await api(`/proxies/${encodeURIComponent(name)}/delay?timeout=6000&url=${encodeURIComponent(testUrl)}`)
         const j: any = await res.json()
-        if (res.ok && j.delay > 0) r.delay = j.delay
-        else r.error = j.message || `HTTP ${res.status}`
+        if (res.ok && j.delay > 0) return { delay: j.delay }
+        return { delay: -1, error: j.message || `HTTP ${res.status}` }
       } catch (e: any) {
-        r.error = e.message
+        return { delay: -1, error: e.message }
       }
-      results[id] = r
+    }
+    const results: Record<string, NodeCheck> = {}
+    await pool(targets, 16, async (id) => {
+      results[id] = { at: Date.now(), ...(await delayOf(resolved.nameOf.get(id)!)) }
     })
+
+    // 链式节点不通时再测一下它的中转：中转从服务器就连不上（常见于只对国内开放的入口），
+    // 说明是服务器测不了，而不是节点在客户端不能用
+    const relayOf = new Map(resolved.proxies.filter((p) => p['dialer-proxy']).map((p) => [p.name, p['dialer-proxy'] as string]))
+    const relayDelay = new Map<string, Promise<{ delay: number }>>()
+    await pool(
+      targets.filter((id) => results[id].delay < 0 && relayOf.has(resolved.nameOf.get(id)!)),
+      8,
+      async (id) => {
+        const relay = relayOf.get(resolved.nameOf.get(id)!)!
+        if (!relayDelay.has(relay)) relayDelay.set(relay, delayOf(relay))
+        if ((await relayDelay.get(relay)!).delay < 0) {
+          results[id].relayDown = true
+          results[id].error = `中转节点「${relay}」从服务器也连不上，无法在服务器上测试这条链路（只对国内开放的中转入口很常见），不代表客户端不能用`
+        }
+      },
+    )
 
     if (opts.unlock) {
       await pool(
@@ -154,7 +171,7 @@ export async function checkNodes(ids: string[], opts: CheckOptions): Promise<Rec
       const n = byId.get(id) as Node
       const r = results[id]
       // 只测延迟时保留上次的解锁结果
-      n.check = opts.unlock ? r : { ...n.check, ...r, unlock: n.check?.unlock, ip: n.check?.ip, country: n.check?.country }
+      n.check = opts.unlock ? r : { ...n.check, ...r, error: r.error, relayDown: r.relayDown, unlock: n.check?.unlock, ip: n.check?.ip, country: n.check?.country }
       n.latency = r.delay
       n.latencyAt = r.at
       n.latencyKind = 'real'
@@ -241,6 +258,13 @@ const CHECKS: Record<UnlockService, (a: ProxyAgent) => Promise<Result>> = {
     if (/Premium is not available in your country/i.test(r.text)) return { status: 'no', region }
     if (r.status !== 200) return { status: 'error', note: `HTTP ${r.status}` }
     return { status: 'yes', region }
+  },
+  async reddit(a) {
+    // Reddit 会直接拒绝它判定为机房 / 代理的 IP（403 blocked by network security）
+    const r = await get(a, 'https://www.reddit.com/')
+    if (r.status === 200) return { status: 'yes' }
+    if (r.status === 403) return { status: 'no', note: '该 IP 被 Reddit 拦截，需要登录才能访问' }
+    return { status: 'error', note: `HTTP ${r.status}` }
   },
 }
 
