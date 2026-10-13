@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import YAML from 'yaml'
 import { randomBytes } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { AccessControl, CustomGroup, CustomRule, Node, Profile, RuleTemplate, Share, Subscription } from '../../shared/types.ts'
 import { RULE_TYPES } from '../../shared/types.ts'
 import { parseRuleLines } from '../../shared/rules-yaml.ts'
@@ -55,7 +57,15 @@ const bad = (msg: string) => ({ error: msg })
 
 // ------------------------------- 认证 -------------------------------
 
-const VERSION = process.env.KNOT_VERSION || 'dev'
+// 版本号在构建镜像时写入 dist/VERSION，跟着镜像走；不用环境变量，
+// 否则 Watchtower / Portainer 等重建容器时会沿用旧容器的 Env，显示旧版本
+const VERSION = (() => {
+  try {
+    return readFileSync(join(import.meta.dirname, 'VERSION'), 'utf8').trim() || 'dev'
+  } catch {
+    return 'dev'
+  }
+})()
 
 api.get('/auth/status', (c) =>
   c.json({ setup: !!db.data.auth.passwordHash, authed: isAuthed(c), passkey: hasPasskeyFor(c), version: VERSION }),

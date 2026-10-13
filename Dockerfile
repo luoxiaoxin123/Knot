@@ -4,6 +4,9 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
+# 版本号写进 dist/VERSION，由后端读取（见 server/src/api.ts）
+ARG VERSION=dev
+RUN printf '%s' "$VERSION" > dist/VERSION
 
 # mihomo 内核：用于真实延迟测试与解锁检测
 FROM node:22-alpine AS core
