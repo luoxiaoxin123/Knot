@@ -13,7 +13,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, Copy, Loader2, X } from 'lucide-react'
+import { Check, Copy, Loader2, MoreHorizontal, X } from 'lucide-react'
 import { copyText } from '../lib/api'
 
 export function cx(...c: (string | false | null | undefined)[]) {
@@ -46,14 +46,13 @@ export const Button = forwardRef<
   )
 })
 
-export function IconButton({
-  title,
-  className,
-  children,
-  ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { title: string }) {
+export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { title: string }>(function IconButton(
+  { title, className, children, ...rest },
+  ref,
+) {
   return (
     <button
+      ref={ref}
       title={title}
       aria-label={title}
       className={cx(
@@ -64,6 +63,85 @@ export function IconButton({
     >
       {children}
     </button>
+  )
+})
+
+// ---------------------------------------------------------------- Menu
+
+export type MenuItem = { label: string; icon?: ReactNode; onClick: () => void; disabled?: boolean; danger?: boolean } | 'divider'
+
+/** 「更多」下拉菜单；用 portal 渲染，不会被表格的横向滚动容器裁掉 */
+export function Menu({ items, title = '更多' }: { items: (MenuItem | false | null | undefined)[]; title?: string }) {
+  const btn = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number; up: boolean } | null>(null)
+  const list = items.filter(Boolean) as MenuItem[]
+  const close = () => setPos(null)
+  useEffect(() => {
+    if (!pos) return
+    const onDown = (e: MouseEvent) => {
+      if (!panel.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) close()
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [pos])
+  const toggle = () => {
+    if (pos) return close()
+    const r = btn.current!.getBoundingClientRect()
+    const up = r.bottom + 40 * list.length > window.innerHeight && r.top > window.innerHeight / 2
+    setPos({ top: up ? r.top - 4 : r.bottom + 4, left: Math.max(8, r.right - 176), up })
+  }
+  return (
+    <>
+      <IconButton ref={btn} title={title} onClick={toggle} className={cx(pos && 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100')}>
+        <MoreHorizontal className="size-4" />
+      </IconButton>
+      {pos &&
+        createPortal(
+          <div
+            ref={panel}
+            role="menu"
+            style={{ top: pos.top, left: pos.left }}
+            className={cx(
+              'fixed z-50 w-44 rounded-lg border border-zinc-200 bg-white py-1 text-sm shadow-lg dark:border-zinc-800 dark:bg-zinc-900',
+              pos.up && '-translate-y-full',
+            )}
+          >
+            {list.map((it, i) =>
+              it === 'divider' ? (
+                <div key={i} className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
+              ) : (
+                <button
+                  key={i}
+                  role="menuitem"
+                  disabled={it.disabled}
+                  onClick={() => {
+                    close()
+                    it.onClick()
+                  }}
+                  className={cx(
+                    'flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors disabled:pointer-events-none disabled:opacity-40 [&>svg]:size-4 [&>svg]:shrink-0',
+                    it.danger ? 'text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40' : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800',
+                  )}
+                >
+                  {it.icon}
+                  {it.label}
+                </button>
+              ),
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
   )
 }
 

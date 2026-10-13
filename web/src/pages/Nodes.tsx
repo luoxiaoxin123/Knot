@@ -17,6 +17,7 @@ import {
   Field,
   IconButton,
   Input,
+  Menu,
   Modal,
   PageHeader,
   Select,
@@ -484,51 +485,71 @@ function NodeRow({
   const broken = chain && (!target || !relay)
   const p = target?.proxy || n.proxy
   const tr = transportOf(target || n)
+  const latency =
+    UDP_TYPES.has((relay || n).proxy.type) && n.latency === undefined ? <span className="text-zinc-400" title="UDP 协议需要 mihomo 内核测速">UDP</span> : <Latency n={n} />
   return (
     <tr className={cx('border-b border-zinc-100 last:border-0 hover:bg-zinc-50/70 dark:border-zinc-800/70 dark:hover:bg-zinc-800/30', !n.enabled && 'opacity-50')}>
       <td className="px-3 py-2.5 align-top"><Checkbox checked={checked} onChange={onCheck} /></td>
       <td className="w-full max-w-0 px-2 py-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <FlagButton own={n.flag} inherited={target?.flag} onClick={onFlag} />
-          <TypeBadge type={p.type} />
-          <span className="truncate font-medium" title={n.name}>{n.name}</span>
-          {broken && <Badge color="red">失效</Badge>}
+        <div className="flex min-w-0 items-start gap-1.5">
+          <span className="flex shrink-0 items-center gap-1.5 pt-px">
+            <FlagButton own={n.flag} inherited={target?.flag} onClick={onFlag} />
+            <TypeBadge type={p.type} />
+          </span>
+          {/* 名称最多两行，过长再省略；完整名称见悬停提示 */}
+          <span className="line-clamp-2 min-w-0 font-medium break-all" title={n.name}>{n.name}</span>
+          {broken && <Badge color="red" className="shrink-0">失效</Badge>}
         </div>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1 text-xs text-zinc-500">
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-zinc-500">
           {chain ? (
-            <span className="flex min-w-0 items-center gap-1">
+            <span className="flex min-w-0 max-w-full items-center gap-1">
               <span className="truncate">{relay?.name ?? '（已删除）'}</span>
               <ArrowRight className="size-3 shrink-0" />
               <span className="truncate">{target?.name ?? '（已删除）'}</span>
             </span>
           ) : (
-            <span className="truncate font-mono 2xl:hidden">{p.server}:{p.port}</span>
+            <span className="min-w-0 max-w-full truncate font-mono 2xl:hidden">{p.server}:{p.port}</span>
           )}
           {tr && <span className="whitespace-nowrap text-zinc-400">· {tr}</span>}
+          {/* 手机上没有延迟列，延迟显示在这里 */}
+          <span className="whitespace-nowrap sm:hidden">· {latency}</span>
           {n.tags.map((t) => <Badge key={t} color="blue">{t}</Badge>)}
         </div>
+        {/* 窄屏没有「出口 / 解锁」列，检测结果显示在名称下方 */}
+        {n.check?.unlock && (
+          <div className="mt-1.5 xl:hidden">
+            <CheckCells check={n.check} inline />
+          </div>
+        )}
       </td>
       <td className="hidden px-2 py-2 font-mono text-xs text-zinc-600 2xl:table-cell dark:text-zinc-400">
         <span className="block max-w-56 truncate" title={`${p.server}:${p.port}`}>{p.server}:{p.port}</span>
       </td>
       <td className="hidden whitespace-nowrap px-2 py-2 sm:table-cell">{sourceLabel(n, subMap)}</td>
-      <td className="hidden min-w-44 px-2 py-2 xl:table-cell"><CheckCells check={n.check} /></td>
-      <td className="hidden whitespace-nowrap px-2 py-2 text-right text-xs sm:table-cell">
-        {UDP_TYPES.has((relay || n).proxy.type) && n.latency === undefined ? <span className="text-zinc-400" title="UDP 协议需要 mihomo 内核测速">UDP</span> : <Latency n={n} />}
-      </td>
+      <td className="hidden min-w-68 px-2 py-2 xl:table-cell"><CheckCells check={n.check} /></td>
+      <td className="hidden whitespace-nowrap px-2 py-2 text-right text-xs sm:table-cell">{latency}</td>
       <td className="px-2 py-2">
         <div className="flex items-center justify-end gap-0.5">
           <Switch checked={n.enabled} onChange={onEnabled} title={n.enabled ? '已启用' : '已停用'} />
           <span className="w-1" />
-          {/* 没有的按钮用等宽占位，保证每行的开关和按钮上下对齐 */}
-          {!chain ? <IconButton title="配置链式代理" onClick={onChain}><Link2 className="size-4" /></IconButton> : <span className="size-7 shrink-0" />}
+          {/* 常用操作直接显示（手机上收进菜单），其余放在「更多」里；没有的按钮用等宽占位，保证每行对齐 */}
           <span className="hidden items-center gap-0.5 sm:flex">
-            <IconButton title="复制分享链接" onClick={onCopy} disabled={!n.uri}><Copy className="size-4" /></IconButton>
-            <IconButton title="二维码" onClick={onQr} disabled={!n.uri}><QrCode className="size-4" /></IconButton>
-            <IconButton title="临时分享" onClick={onShare}><Send className="size-4" /></IconButton>
+            {!chain ? <IconButton title="配置链式代理" onClick={onChain}><Link2 className="size-4" /></IconButton> : <span className="size-7 shrink-0" />}
+            <IconButton title="编辑" onClick={onEdit}><Pencil className="size-4" /></IconButton>
           </span>
-          <IconButton title="编辑" onClick={onEdit}><Pencil className="size-4" /></IconButton>
-          {n.source.kind !== 'sub' ? <IconButton title="删除" onClick={onDelete} className="hover:text-red-600"><Trash2 className="size-4" /></IconButton> : <span className="size-7 shrink-0" />}
+          <Menu
+            items={[
+              { label: '编辑', icon: <Pencil />, onClick: onEdit },
+              !chain && { label: '配置链式代理', icon: <Link2 />, onClick: onChain },
+              { label: '设置旗帜', icon: <FlagIcon />, onClick: onFlag },
+              'divider',
+              { label: '复制分享链接', icon: <Copy />, onClick: onCopy, disabled: !n.uri },
+              { label: '二维码', icon: <QrCode />, onClick: onQr, disabled: !n.uri },
+              { label: '临时分享', icon: <Send />, onClick: onShare },
+              n.source.kind !== 'sub' && 'divider',
+              n.source.kind !== 'sub' && { label: '删除', icon: <Trash2 />, onClick: onDelete, danger: true },
+            ]}
+          />
         </div>
       </td>
     </tr>

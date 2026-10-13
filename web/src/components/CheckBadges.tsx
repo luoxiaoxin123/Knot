@@ -21,10 +21,10 @@ const STATUS = {
 
 
 /** 节点出口 IP 与解锁状态 */
-export function CheckCells({ check }: { check?: NodeCheck }) {
+export function CheckCells({ check, inline }: { check?: NodeCheck; inline?: boolean }) {
   if (!check?.unlock) return <span className="text-xs text-zinc-400">—</span>
   return (
-    <div className="space-y-1" title={`检测于 ${new Date(check.at).toLocaleString()}`}>
+    <div className={inline ? 'flex flex-wrap items-center gap-x-1.5 gap-y-1' : 'space-y-1'} title={`检测于 ${new Date(check.at).toLocaleString()}`}>
       {check.ip && (
         <div className="font-mono text-[11px] text-zinc-500">
           {flagOf(check.country)} {check.ip}
