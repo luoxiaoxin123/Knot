@@ -67,10 +67,12 @@ export function compact<T extends Record<string, any>>(o: T): T {
 }
 
 /**
- * YAML 别名展开上限。Clash 配置常用锚点复用分组，库默认的 100 不够；
- * 但不能关掉（-1）：几百字节的嵌套别名就能展开成几百 MB，保存或输出时撑爆内存
+ * 解析 Clash / mihomo YAML 的选项：
+ * - 别名展开上限：Clash 配置常用锚点复用分组，库默认的 100 不够；但不能关掉（-1），
+ *   几百字节的嵌套别名就能展开成几百 MB，保存或输出时撑爆内存
+ * - 合并键 `<<: *base`：mihomo 支持，常用于复用节点的公共字段；不开启时这些节点缺字段被丢掉
  */
-export const YAML_MAX_ALIAS = 10_000
+export const CLASH_YAML = { maxAliasCount: 10_000, merge: true } as const
 
 export function safeRegex(src: string): RegExp | null {
   if (!src) return null

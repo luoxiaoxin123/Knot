@@ -8,7 +8,7 @@ import { parseIni } from './rules/ini.ts'
 import { GROUP_REGIONS, REGIONS, detectRegion, flagEmoji, type Region } from './region.ts'
 import { toUri } from './uri-emit.ts'
 import { toSingboxOutbound } from './singbox.ts'
-import { YAML_MAX_ALIAS, b64encode, deepClone, deepMerge, safeRegex } from './util.ts'
+import { CLASH_YAML, b64encode, deepClone, deepMerge, safeRegex } from './util.ts'
 
 export interface GenContext {
   nodes: Node[]
@@ -454,7 +454,7 @@ function buildClashParts(ctx: GenContext, profile: Profile, resolved: ResolvedPr
   if (profile.ruleMode === 'template' && !template) warnings.push('所选规则模板不存在，已使用内置模块')
 
   if (template?.kind === 'clash') {
-    const tpl = YAML.parse(template.content, { maxAliasCount: YAML_MAX_ALIAS }) || {}
+    const tpl = YAML.parse(template.content, CLASH_YAML) || {}
     const r = applyClashTemplate(tpl, names)
     warnings.push(...r.warnings)
     delete tpl.proxies
@@ -580,7 +580,7 @@ export function generateClash(ctx: GenContext, profile: Profile, transform?: (st
 
   if (profile.overrideYaml?.trim()) {
     try {
-      const ov = YAML.parse(profile.overrideYaml)
+      const ov = YAML.parse(profile.overrideYaml, CLASH_YAML)
       if (ov && typeof ov === 'object') config = deepMerge(config, ov)
     } catch (e: any) {
       warnings.push(`覆写 YAML 解析失败：${e.message}`)

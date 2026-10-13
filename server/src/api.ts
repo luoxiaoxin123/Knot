@@ -38,7 +38,7 @@ import {
 } from './twofa.ts'
 import { parseSubscription } from './core/sub-parse.ts'
 import { toUri } from './core/uri-emit.ts'
-import { YAML_MAX_ALIAS, uid } from './core/util.ts'
+import { CLASH_YAML, uid } from './core/util.ts'
 import { MODULES, MODULE_PRESETS } from './core/rules/modules.ts'
 import { draftCustomGroups, generate, policyOptions, resolveProxies } from './core/generate.ts'
 import { genCtx } from './ctx.ts'
@@ -627,7 +627,7 @@ function validateTemplate(t: RuleTemplate): string | null {
     return /custom_proxy_group\s*=/.test(t.content) ? null : '没有找到 custom_proxy_group，不是有效的 ini 模板'
   }
   try {
-    const y = YAML.parse(t.content, { maxAliasCount: YAML_MAX_ALIAS })
+    const y = YAML.parse(t.content, CLASH_YAML)
     if (!y || typeof y !== 'object') return 'YAML 内容为空'
     if (!Array.isArray(y['proxy-groups']) && !Array.isArray(y.rules)) return '模板中没有 proxy-groups 或 rules'
     return null
@@ -765,7 +765,7 @@ function profilePatch(p: Profile, b: any): string | null {
   if (err) return err
   if (p.overrideYaml?.trim()) {
     try {
-      YAML.parse(p.overrideYaml)
+      YAML.parse(p.overrideYaml, CLASH_YAML)
     } catch (e: any) {
       return `覆写 YAML 有误：${e.message}`
     }

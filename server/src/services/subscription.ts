@@ -2,7 +2,7 @@ import type { Node, Proxy, Subscription } from '../../../shared/types.ts'
 import { db } from '../db.ts'
 import { parseSubscription, parseUserinfo } from '../core/sub-parse.ts'
 import YAML from 'yaml'
-import { YAML_MAX_ALIAS, safeRegex, uid } from '../core/util.ts'
+import { CLASH_YAML, safeRegex, uid } from '../core/util.ts'
 
 export const DEFAULT_SUB_UA = 'clash.meta'
 export const DEFAULT_EXCLUDE = '剩余|到期|过期|官网|套餐|重置|expire|traffic|网址|官方'
@@ -105,7 +105,7 @@ export async function refreshTemplate(id: string) {
     const { text } = await httpGet(t.url, 'knot')
     // 解析不了的内容不覆盖旧模板，否则使用该模板的订阅链接全部报错
     const ini = t.kind === 'ini' || /^\s*(custom_proxy_group|ruleset)\s*=/m.test(text)
-    if (!ini) YAML.parse(text, { maxAliasCount: YAML_MAX_ALIAS })
+    if (!ini) YAML.parse(text, CLASH_YAML)
     t.content = text
     t.lastError = undefined
   } catch (e: any) {

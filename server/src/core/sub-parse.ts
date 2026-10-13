@@ -2,7 +2,7 @@ import YAML from 'yaml'
 import type { Proxy } from '../../../shared/types.ts'
 import { isProxyUri, parseUri } from './uri-parse.ts'
 import { fromSingboxOutbound } from './singbox.ts'
-import { YAML_MAX_ALIAS, b64decode, looksBase64 } from './util.ts'
+import { CLASH_YAML, b64decode, looksBase64 } from './util.ts'
 
 export interface ParseResult {
   proxies: Proxy[]
@@ -70,7 +70,7 @@ export function parseSubscription(content: string): ParseResult {
 
   // 3) YAML（Clash / mihomo 完整配置、proxies 列表、单个节点）
   try {
-    const y = YAML.parse(text, { maxAliasCount: YAML_MAX_ALIAS })
+    const y = YAML.parse(text, CLASH_YAML)
     let list: any[] | null = null
     if (y && Array.isArray(y.proxies)) list = y.proxies
     else if (Array.isArray(y)) list = y

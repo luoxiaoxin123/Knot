@@ -61,6 +61,32 @@ describe('YAML 别名展开', () => {
   })
 })
 
+describe('YAML 合并键', () => {
+  it('节点用 <<: *base 复用公共字段', () => {
+    const y = [
+      'base: &b {type: ss, server: 1.1.1.1, cipher: aes-128-gcm, password: p, udp: true}',
+      'proxies:',
+      '  - {<<: *b, name: a, port: 1}',
+      '  - <<: *b',
+      '    name: b',
+      '    port: 2',
+      '    server: 2.2.2.2',
+    ].join('\n')
+    const r = parseSubscription(y)
+    expect(r.proxies.map((p) => [p.name, p.server, p.port, p.type, p.udp])).toEqual([
+      ['a', '1.1.1.1', 1, 'ss', true],
+      ['b', '2.2.2.2', 2, 'ss', true],
+    ])
+    expect(r.proxies[0]).not.toHaveProperty('<<')
+  })
+  it('合并键同样受别名展开上限约束', () => {
+    let y = 'a0: &a0 {k: "xxxxxxxx"}\n'
+    for (let i = 1; i <= 7; i++) y += `a${i}: &a${i} [${Array(10).fill('*a' + (i - 1)).join(',')}]\n`
+    y += 'proxies: [{<<: {x: *a7}, name: n, type: ss, server: 1.1.1.1, port: 1}]\n'
+    expect(parseSubscription(y).proxies).toHaveLength(0)
+  })
+})
+
 describe('下载大小上限', () => {
   it('超过上限时报错', async () => {
     const big = new Response(new Uint8Array(2048))
