@@ -11,8 +11,10 @@ services:
       - ./data:/data
     environment:
       - TZ=Asia/Shanghai
-      # 可选：首次启动时直接设置管理员密码（否则在网页上初始化）
+      # 可选：首次启动时直接设置管理员密码（否则在网页上用启动日志里的初始化令牌设置）
       # - ADMIN_PASSWORD=change-me
+      # 可选：客户端 IP 的取法。直接暴露端口时设为 none；经过 Cloudflare 时设为 cloudflare（默认 auto）
+      # - TRUST_PROXY=none
       # 可选：服务器拉取订阅需要走代理时
       # - NODE_USE_ENV_PROXY=1
       # - HTTPS_PROXY=http://127.0.0.1:7890

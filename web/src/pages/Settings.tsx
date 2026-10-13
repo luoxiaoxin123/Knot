@@ -79,7 +79,7 @@ function SettingsForm({ initial }: { initial: SettingsView }) {
         </div>
       </Card>
 
-      <CoreCard path={f.corePath} onChange={(v) => set('corePath', v)} />
+      <CoreCard />
       <S3Card f={f} setS3={setS3} save={save} />
       <LocalBackupCard />
       <MigrateCard />
@@ -273,7 +273,7 @@ function PasswordCard() {
   )
 }
 
-function CoreCard({ path, onChange }: { path: string; onChange: (v: string) => void }) {
+function CoreCard() {
   const st = useQuery({ queryKey: ['core'], queryFn: () => api.get<{ available: boolean; path: string | null; version: string }>('/core/status') })
   return (
     <Card>
@@ -291,9 +291,9 @@ function CoreCard({ path, onChange }: { path: string; onChange: (v: string) => v
             <span className="text-amber-600">未找到内核，测速将退回 TCP 握手延迟</span>
           )}
         </div>
-        <Field label="内核路径" hint="留空自动查找（MIHOMO_PATH 环境变量、PATH、/usr/local/bin/mihomo、数据目录 bin/mihomo）">
-          <Input value={path} onChange={(e) => onChange(e.target.value)} placeholder={st.data?.path || '/usr/local/bin/mihomo'} className="font-mono" />
-        </Field>
+        <p className="text-xs text-zinc-500">
+          自动查找 MIHOMO_PATH 环境变量、/usr/local/bin/mihomo、/usr/bin/mihomo、数据目录 bin/mihomo 和 PATH。需要指定其他位置时设置 MIHOMO_PATH 环境变量。
+        </p>
       </div>
     </Card>
   )

@@ -52,6 +52,10 @@ const bm7Url = (target: IosTarget, name: string) => `${BM7}/${CLIENT_DIR[target]
 // ------------------------------------------------------------------ 节点
 
 const q = (v: any) => `"${String(v).replace(/"/g, '')}"`
+/** 换行等控制字符：这几种客户端的配置按行解析，混进来就能注入任意配置段 */
+const CTRL = /[\u0000-\u001f\u007f\u2028\u2029]/
+const CTRL_ALL = new RegExp(CTRL.source, 'g')
+const oneLine = (v: string) => v.replace(CTRL_ALL, ' ')
 const hostOf = (p: Proxy) => p['ws-opts']?.headers?.Host ?? p['ws-opts']?.headers?.host
 const sniOf = (p: Proxy) => p.servername ?? p.sni
 
@@ -391,12 +395,12 @@ export function generateIos(ctx: GenContext, profile: Profile, target: IosTarget
   const label = { surge: 'Surge', loon: 'Loon', qx: 'Quantumult X' }[target]
   if (profile.ruleMode === 'template') warnings.push(`${label} 输出不使用外部 Clash 模板的规则集，模板中的远程规则只有 .list 格式会保留`)
 
-  // 名称里不能有逗号 / 等号
+  // 名称里不能有逗号 / 等号 / 换行
   const used = new Set<string>()
   const nameMap = new Map<string, string>()
   const clean = (n: string) => {
     if (nameMap.has(n)) return nameMap.get(n)!
-    let base = n.replace(/[,=]/g, ' ').trim() || 'node'
+    let base = oneLine(n).replace(/[,=]/g, ' ').trim() || 'node'
     let v = base
     for (let i = 2; used.has(v); i++) v = `${base} ${i}`
     used.add(v)
@@ -417,6 +421,7 @@ export function generateIos(ctx: GenContext, profile: Profile, target: IosTarget
       const name = clean(p.name)
       const line =
         target === 'surge' ? surgeProxy(p, name, relay ? nameMap.get(relay) : undefined) : target === 'loon' ? loonProxy(p, name) : qxProxy(p, name)
+      if (CTRL.test(line)) unsupported('节点参数里有换行等控制字符')
       proxyLines.push(line)
       ok.add(p.name)
     } catch (e: any) {
@@ -432,7 +437,7 @@ export function generateIos(ctx: GenContext, profile: Profile, target: IosTarget
   const groupNames = new Set(st.groups.map((g) => g.name))
   const builtin = (m: string) => (target === 'qx' ? m.toLowerCase() : m)
   const memberOk = (m: string) => ok.has(m) || groupNames.has(m) || m === 'DIRECT' || m === 'REJECT'
-  const testUrl = ctx.settings.testUrl
+  const testUrl = oneLine(ctx.settings.testUrl)
   const groupLines = st.groups.map((g) => {
     let members: string[] = (g.proxies || []).filter(memberOk)
     if (!members.length) members = ['DIRECT']
@@ -494,12 +499,13 @@ export function generateIos(ctx: GenContext, profile: Profile, target: IosTarget
       const prov = st.providers[value]
       // 模板 / 自定义的 .list 文本规则集，Surge / Loon 语法兼容
       if (prov?.url && target !== 'qx' && (prov.format === 'text' || /\.list$/.test(prov.url)) && prov.behavior === 'classical') {
-        ordered.push({ url: prov.url, policy: policy(pol), tag: value })
+        if (CTRL.test(prov.url + value)) skipped++
+        else ordered.push({ url: prov.url, policy: policy(pol), tag: value })
       } else skipped++
       continue
     }
     const line = convertRule(target, type, value, policy(pol), noResolve)
-    if (line) ordered.push({ local: line })
+    if (line && !CTRL.test(line)) ordered.push({ local: line })
     else skipped++
   }
   if (skipped) warnings.push(`${skipped} 条规则 ${label} 不支持，已跳过`)
@@ -508,13 +514,13 @@ export function generateIos(ctx: GenContext, profile: Profile, target: IosTarget
   const orderNote =
     target === 'surge' ? '' : `# 注意：${label} 中本地规则优先于远程规则，自定义尾部规则与 GEOIP,CN 会先于远程规则集匹配`
 
-  const header = `# ${profile.name} — 由 Knot 生成于 ${new Date().toISOString()}`
+  const header = `# ${oneLine(profile.name)} — 由 Knot 生成于 ${new Date().toISOString()}`
   const skip = '127.0.0.1, 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 100.64.0.0/10, localhost, *.local'
   let text = ''
   if (target === 'surge') {
     const ruleLines = [...ordered.map((x) => ('local' in x ? x.local : `RULE-SET,${x.url},${x.policy}`)), `FINAL,${policy(final)},dns-failed`]
     text = [
-      opts.managedUrl ? `#!MANAGED-CONFIG ${opts.managedUrl} interval=43200 strict=false` : '',
+      opts.managedUrl ? `#!MANAGED-CONFIG ${oneLine(opts.managedUrl)} interval=43200 strict=false` : '',
       header,
       '',
       '[General]',

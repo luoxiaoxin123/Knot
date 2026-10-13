@@ -24,7 +24,6 @@ export const settings: Settings = {
   ruleDownloadViaProxy: true,
   testUrl: 'https://www.gstatic.com/generate_204',
   s3: { enabled: false, endpoint: '', region: 'auto', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: 'knot/', pathStyle: false, intervalHours: 0, keep: 10 },
-  corePath: '',
   logRetentionDays: 90,
 }
 

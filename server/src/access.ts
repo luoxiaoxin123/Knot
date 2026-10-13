@@ -19,16 +19,36 @@ function isPrivate(ip: string): boolean {
   return v ? PRIVATE.check(ip, v === 6 ? 'ipv6' : 'ipv4') : false
 }
 
+export type TrustProxy = 'auto' | 'none' | 'cloudflare' | 'x-real-ip'
+
+/** TRUST_PROXY：怎样从反向代理传来的请求头里取客户端 IP */
+export function trustProxy(): TrustProxy {
+  const v = (process.env.TRUST_PROXY || '').trim().toLowerCase()
+  if (['none', 'false', '0', 'off', 'no'].includes(v)) return 'none'
+  if (v === 'cloudflare' || v === 'x-real-ip') return v
+  return 'auto'
+}
+
 /**
- * 客户端 IP。只有请求来自本机 / 内网（即经过反向代理）时才信任
- * X-Forwarded-For 等头，避免直接暴露端口时被伪造来源 IP 绕过白名单。
+ * 客户端 IP。只有请求来自本机 / 内网（即经过反向代理）时才读请求头，且只读代理自己写入的部分：
+ * - auto（默认）：X-Forwarded-For 最右侧一项，即离本服务最近的那层代理看到的来源地址；
+ *   更靠左的项和 X-Real-IP / CF-Connecting-IP 都可能是客户端自己带上的，不采信
+ * - cloudflare：CF-Connecting-IP（Cloudflare 会覆盖客户端自带的值）
+ * - x-real-ip：X-Real-IP（需要代理用 $remote_addr 覆盖）
+ * - none：不读请求头，直接暴露端口时使用
  */
 export function clientIp(c: Context): string {
   const remote = normalizeIp((c.env as any)?.incoming?.socket?.remoteAddress || '')
-  if (!remote || isPrivate(remote)) {
+  const mode = trustProxy()
+  if (mode !== 'none' && (!remote || isPrivate(remote))) {
     const fwd =
-      c.req.header('cf-connecting-ip') || c.req.header('x-real-ip') || c.req.header('x-forwarded-for')?.split(',')[0].trim()
-    if (fwd) return normalizeIp(fwd)
+      mode === 'cloudflare'
+        ? c.req.header('cf-connecting-ip')
+        : mode === 'x-real-ip'
+          ? c.req.header('x-real-ip')
+          : c.req.header('x-forwarded-for')?.split(',').pop()
+    const ip = normalizeIp(fwd?.trim() || '')
+    if (isIP(ip)) return ip
   }
   return remote || 'unknown'
 }

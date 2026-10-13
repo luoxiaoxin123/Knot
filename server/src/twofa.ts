@@ -131,6 +131,11 @@ const challenges = new Map<string, { challenge: string; at: number; kind: 'reg' 
 function putChallenge(kind: 'reg' | 'auth', challenge: string) {
   const now = Date.now()
   for (const [k, v] of challenges) if (now - v.at > 5 * 60_000) challenges.delete(k)
+  // 获取登录选项不需要登录，限制总数，防止被刷满内存（Map 按插入顺序，先丢最早的）
+  for (const k of challenges.keys()) {
+    if (challenges.size < 1000) break
+    challenges.delete(k)
+  }
   const id = randomBytes(12).toString('base64url')
   challenges.set(id, { challenge, at: now, kind })
   return id

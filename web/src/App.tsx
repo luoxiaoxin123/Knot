@@ -104,6 +104,7 @@ function Shell({ children, version }: { children: ReactNode; version?: string })
 function AuthScreen({ setup, passkey }: { setup: boolean; passkey: boolean }) {
   const [pw, setPw] = useState('')
   const [pw2, setPw2] = useState('')
+  const [token, setToken] = useState('')
   const [code, setCode] = useState('')
   const [need2fa, setNeed2fa] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -116,7 +117,7 @@ function AuthScreen({ setup, passkey }: { setup: boolean; passkey: boolean }) {
     setLoading(true)
     try {
       if (!setup) {
-        await api.post('/auth/setup', { password: pw })
+        await api.post('/auth/setup', { password: pw, token })
         return done()
       }
       const r = await api.post<{ ok?: boolean; need2fa?: boolean }>('/auth/login', { password: pw, ...(need2fa ? { code } : {}) })
@@ -149,16 +150,25 @@ function AuthScreen({ setup, passkey }: { setup: boolean; passkey: boolean }) {
         <Logo />
         <div>
           <h1 className="text-lg font-semibold">{!setup ? '初始化管理员密码' : need2fa ? '两步验证' : '登录'}</h1>
-          {!setup && <p className="mt-1 text-sm text-zinc-500">首次使用，请设置一个管理密码（至少 6 位）。</p>}
+          {!setup && (
+            <p className="mt-1 text-sm text-zinc-500">
+              首次使用，请设置一个管理密码（至少 6 位）。初始化令牌打印在服务器日志里，Docker 部署用 <code className="font-mono">docker logs knot</code> 查看。
+            </p>
+          )}
           {need2fa && <p className="mt-1 text-sm text-zinc-500">输入验证器 App 中的 6 位验证码，或一个恢复码。</p>}
         </div>
+        {!setup && (
+          <Field label="初始化令牌">
+            <Input value={token} onChange={(e) => setToken(e.target.value)} autoFocus autoComplete="off" spellCheck={false} placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" className="font-mono" />
+          </Field>
+        )}
         {need2fa ? (
           <Field label="验证码">
             <Input value={code} onChange={(e) => setCode(e.target.value)} autoFocus inputMode="numeric" autoComplete="one-time-code" placeholder="123456" className="text-center font-mono text-lg tracking-widest" />
           </Field>
         ) : (
           <Field label="密码">
-            <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus autoComplete={setup ? 'current-password' : 'new-password'} />
+            <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus={setup} autoComplete={setup ? 'current-password' : 'new-password'} />
           </Field>
         )}
         {!setup && (

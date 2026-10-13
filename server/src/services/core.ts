@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import YAML from 'yaml'
 import { ProxyAgent, fetch as ufetch } from 'undici'
-import type { Node, NodeCheck, UnlockService, UnlockStatus } from '../../../shared/types.ts'
+import type { NodeCheck, UnlockService, UnlockStatus } from '../../../shared/types.ts'
 import { DATA_DIR, db, newProfile } from '../db.ts'
 import { resolveProxies } from '../core/generate.ts'
 import { genCtx } from '../ctx.ts'
@@ -25,7 +25,8 @@ function executable(p: string) {
 }
 
 export function findCore(): string | null {
-  const list = [db.data.settings.corePath, process.env.MIHOMO_PATH, ...CANDIDATES].filter((x): x is string => !!x)
+  // 不读网页设置：能从网页或备份文件改路径，等于能让服务器执行任意程序
+  const list = [process.env.MIHOMO_PATH, ...CANDIDATES].filter((x): x is string => !!x)
   for (const dir of (process.env.PATH || '').split(':')) if (dir) list.push(join(dir, 'mihomo'))
   return list.find(executable) || null
 }
@@ -77,7 +78,6 @@ export async function checkNodes(ids: string[], opts: CheckOptions): Promise<Rec
   try {
     const profile = { ...newProfile('check'), nodeMode: 'pick' as const, nodeIds: ids, addFlags: false }
     const resolved = resolveProxies(genCtx(), profile)
-    const byId = new Map(db.data.nodes.map((n) => [n.id, n]))
     const targets = ids.filter((id) => resolved.nameOf.has(id) && resolved.visible.includes(resolved.nameOf.get(id)!))
     if (!targets.length) return {}
 
@@ -167,8 +167,11 @@ export async function checkNodes(ids: string[], opts: CheckOptions): Promise<Rec
       )
     }
 
+    // 检测期间节点可能被删除，或订阅更新换成了新对象，按 id 重新取当前的节点
+    const live = new Map(db.data.nodes.map((n) => [n.id, n]))
     for (const id of targets) {
-      const n = byId.get(id) as Node
+      const n = live.get(id)
+      if (!n) continue
       const r = results[id]
       // 只测延迟时保留上次的解锁结果
       n.check = opts.unlock ? r : { ...n.check, ...r, error: r.error, relayDown: r.relayDown, unlock: n.check?.unlock, ip: n.check?.ip, country: n.check?.country }

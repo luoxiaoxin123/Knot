@@ -45,7 +45,7 @@ curl -O https://raw.githubusercontent.com/luoxiaoxin123/knot/main/docker-compose
 docker compose up -d
 ```
 
-打开 `http://服务器IP:3000`，首次访问时设置管理密码。数据保存在 `./data/db.json`。
+打开 `http://服务器IP:3000`，首次访问时设置管理密码。设置时需要填写启动日志里的**初始化令牌**（`docker logs knot` 查看），防止部署后还没设密码时被别人抢先初始化；用 `ADMIN_PASSWORD` 预设密码则不需要。数据保存在 `./data/db.json`。
 
 更新到最新版本：
 
@@ -80,8 +80,9 @@ DATA_DIR=./data PORT=3000 npm start
 | `PORT` | `3000` | 监听端口 |
 | `HOST` | `0.0.0.0` | 监听地址 |
 | `DATA_DIR` | `./data`（镜像内为 `/data`） | 数据目录 |
-| `ADMIN_PASSWORD` | — | 首次启动时设置管理密码（已设置过则忽略） |
-| `MIHOMO_PATH` | — | mihomo 内核路径（镜像内为 `/usr/local/bin/mihomo`） |
+| `ADMIN_PASSWORD` | — | 首次启动时设置管理密码（已设置过则忽略）；不设置时需要用启动日志里的初始化令牌在网页上设置 |
+| `MIHOMO_PATH` | — | mihomo 内核路径（镜像内为 `/usr/local/bin/mihomo`）。出于安全考虑只能用环境变量指定，网页上不能修改 |
+| `TRUST_PROXY` | `auto` | 怎样从反向代理的请求头取客户端 IP（IP 白名单、登录限流、日志使用），见下方说明 |
 | `NODE_USE_ENV_PROXY` + `HTTPS_PROXY` | — | 服务器拉取订阅 / 模板需要走代理时设置 |
 
 ### 反向代理（HTTPS）
@@ -118,6 +119,17 @@ server {
 ```
 
 </details>
+
+**客户端 IP（`TRUST_PROXY`）**：只有请求来自本机或内网地址时才会读请求头，读哪个头由 `TRUST_PROXY` 决定：
+
+| 值 | 读取 | 适用 |
+|---|---|---|
+| `auto`（默认） | `X-Forwarded-For` 最右侧一项 | 一层反向代理（上面的 Caddy / Nginx 配置） |
+| `cloudflare` | `CF-Connecting-IP` | 经过 Cloudflare（CDN 或 Tunnel）再到本服务 |
+| `x-real-ip` | `X-Real-IP` | 代理用 `$remote_addr` 覆盖了 `X-Real-IP` |
+| `none` | 不读请求头 | 直接暴露端口、没有反向代理 |
+
+直接暴露端口时建议设置 `TRUST_PROXY=none`：Docker Desktop、rootless Docker 或经 IPv6 访问时，连接可能显示为来自内网网关，这时请求头可以被伪造。
 
 ## 使用流程
 
@@ -259,7 +271,7 @@ server {
 
 **IP 白名单在反向代理后面能用吗？**
 
-能。只有请求来自本机或内网（即经过反向代理）时，才会读取 `X-Forwarded-For` / `X-Real-IP`；直接暴露端口时使用 TCP 连接的来源地址，避免被伪造请求头绕过。
+能。只有请求来自本机或内网（即经过反向代理）时才读请求头，默认只取 `X-Forwarded-For` 最右侧、由代理自己写入的一项，客户端自带的值不会被采信。经过 Cloudflare 或多层代理时请设置 `TRUST_PROXY`，见「反向代理」一节。
 
 **资源占用如何？**
 

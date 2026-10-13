@@ -8,7 +8,7 @@ import { parseIni } from './rules/ini.ts'
 import { GROUP_REGIONS, REGIONS, detectRegion, flagEmoji, type Region } from './region.ts'
 import { toUri } from './uri-emit.ts'
 import { toSingboxOutbound } from './singbox.ts'
-import { b64encode, deepClone, deepMerge, safeRegex } from './util.ts'
+import { YAML_MAX_ALIAS, b64encode, deepClone, deepMerge, safeRegex } from './util.ts'
 
 export interface GenContext {
   nodes: Node[]
@@ -454,7 +454,7 @@ function buildClashParts(ctx: GenContext, profile: Profile, resolved: ResolvedPr
   if (profile.ruleMode === 'template' && !template) warnings.push('所选规则模板不存在，已使用内置模块')
 
   if (template?.kind === 'clash') {
-    const tpl = YAML.parse(template.content, { maxAliasCount: -1 }) || {}
+    const tpl = YAML.parse(template.content, { maxAliasCount: YAML_MAX_ALIAS }) || {}
     const r = applyClashTemplate(tpl, names)
     warnings.push(...r.warnings)
     delete tpl.proxies
@@ -629,7 +629,9 @@ export function generateV2ray(ctx: GenContext, profile: Profile): GenResult {
   for (const p of resolved.proxies) {
     if (!visible.has(p.name)) continue
     const uri = toUri(p)
-    if (uri) lines.push(uri)
+    // 服务器地址等字段带换行时会多出一行，相当于往订阅里塞进别的节点
+    if (uri && /[\u0000-\u001f\u007f]/.test(uri)) warnings.push(`「${p.name}」节点参数里有换行等控制字符，已跳过`)
+    else if (uri) lines.push(uri)
     else warnings.push(`「${p.name}」无法转换为分享链接${p['dialer-proxy'] ? '（链式代理仅支持 Clash / sing-box）' : ''}`)
   }
   return { text: b64encode(lines.join('\n')), warnings, contentType: 'text/plain; charset=utf-8' }

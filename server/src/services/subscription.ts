@@ -1,10 +1,14 @@
 import type { Node, Proxy, Subscription } from '../../../shared/types.ts'
 import { db } from '../db.ts'
 import { parseSubscription, parseUserinfo } from '../core/sub-parse.ts'
-import { safeRegex, uid } from '../core/util.ts'
+import YAML from 'yaml'
+import { YAML_MAX_ALIAS, safeRegex, uid } from '../core/util.ts'
 
 export const DEFAULT_SUB_UA = 'clash.meta'
 export const DEFAULT_EXCLUDE = '剩余|到期|过期|官网|套餐|重置|expire|traffic|网址|官方'
+
+/** 订阅 / 模板的大小上限（解压后），防止超大响应撑爆内存 */
+export const MAX_DOWNLOAD = 20 * 1024 * 1024
 
 export async function httpGet(url: string, ua: string, timeoutMs = 30_000) {
   const res = await fetch(url, {
@@ -13,7 +17,29 @@ export async function httpGet(url: string, ua: string, timeoutMs = 30_000) {
     redirect: 'follow',
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return { text: await res.text(), headers: res.headers }
+  return { text: await readLimited(res, MAX_DOWNLOAD), headers: res.headers }
+}
+
+export async function readLimited(res: Response, max: number): Promise<string> {
+  const tooBig = () => new Error(`内容超过 ${Math.round(max / 1024 / 1024)} MB`)
+  if (Number(res.headers.get('content-length') || 0) > max) {
+    await res.body?.cancel().catch(() => {})
+    throw tooBig()
+  }
+  const chunks: Uint8Array[] = []
+  let size = 0
+  const reader = res.body?.getReader()
+  while (reader) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.length
+    if (size > max) {
+      await reader.cancel().catch(() => {})
+      throw tooBig()
+    }
+    chunks.push(value)
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks))
 }
 
 /** 用新解析出的节点替换订阅原有节点，尽量保留 id（链式代理依赖 id） */
@@ -77,6 +103,9 @@ export async function refreshTemplate(id: string) {
   if (!t || !t.url) return
   try {
     const { text } = await httpGet(t.url, 'knot')
+    // 解析不了的内容不覆盖旧模板，否则使用该模板的订阅链接全部报错
+    const ini = t.kind === 'ini' || /^\s*(custom_proxy_group|ruleset)\s*=/m.test(text)
+    if (!ini) YAML.parse(text, { maxAliasCount: YAML_MAX_ALIAS })
     t.content = text
     t.lastError = undefined
   } catch (e: any) {

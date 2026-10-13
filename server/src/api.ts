@@ -6,14 +6,17 @@ import { RULE_TYPES } from '../../shared/types.ts'
 import { parseRuleLines } from '../../shared/rules-yaml.ts'
 import { db, defaultAccess, newProfile } from './db.ts'
 import {
+  checkSetupToken,
   clearFailures,
   clearSession,
+  consumeSetupToken,
   hashPassword,
   isAuthed,
   issueSession,
   loginBlocked,
   recordFailure,
   requireAuth,
+  revokeOtherSessions,
   verifyPassword,
 } from './auth.ts'
 import { clientIp, validateAllowlist } from './access.ts'
@@ -35,7 +38,7 @@ import {
 } from './twofa.ts'
 import { parseSubscription } from './core/sub-parse.ts'
 import { toUri } from './core/uri-emit.ts'
-import { uid } from './core/util.ts'
+import { YAML_MAX_ALIAS, uid } from './core/util.ts'
 import { MODULES, MODULE_PRESETS } from './core/rules/modules.ts'
 import { draftCustomGroups, generate, policyOptions, resolveProxies } from './core/generate.ts'
 import { genCtx } from './ctx.ts'
@@ -60,9 +63,17 @@ api.get('/auth/status', (c) =>
 
 api.post('/auth/setup', async (c) => {
   if (db.data.auth.passwordHash) return c.json(bad('已初始化'), 400)
-  const { password } = await c.req.json()
+  const ip = clientIp(c)
+  if (loginBlocked(ip)) return c.json(bad('尝试次数过多，请 10 分钟后再试'), 429)
+  const { password, token } = await c.req.json()
+  if (!checkSetupToken(token)) {
+    recordFailure(ip)
+    logReq(c, 'login', 'setup', false, { detail: '初始化令牌错误' })
+    return c.json(bad('初始化令牌错误，请在服务器日志中查看'), 403)
+  }
   if (!password || String(password).length < 6) return c.json(bad('密码至少 6 位'), 400)
   db.data.auth.passwordHash = hashPassword(String(password))
+  consumeSetupToken()
   db.flush()
   issueSession(c)
   logReq(c, 'login', 'setup', true, { detail: '初始化管理员密码' })
@@ -144,7 +155,7 @@ api.post('/auth/password', async (c) => {
   if (!newPassword || String(newPassword).length < 6) return c.json(bad('新密码至少 6 位'), 400)
   db.data.auth.passwordHash = hashPassword(String(newPassword))
   db.flush()
-  issueSession(c)
+  revokeOtherSessions(c)
   logReq(c, 'admin', 'password_change', true, { detail: '修改了管理密码' })
   return c.json({ ok: true })
 })
@@ -168,6 +179,7 @@ api.post('/auth/totp/enable', async (c) => {
   const { code } = await c.req.json()
   const codes = confirmTotpSetup(String(code || ''))
   if (!codes) return c.json(bad('验证码错误或已过期'), 400)
+  revokeOtherSessions(c)
   logReq(c, 'admin', 'totp_enable', true, { detail: '开启了两步验证' })
   return c.json({ recoveryCodes: codes })
 })
@@ -179,6 +191,7 @@ api.post('/auth/totp/disable', async (c) => {
     return c.json(bad('密码或验证码错误'), 400)
   }
   disableTotp()
+  revokeOtherSessions(c)
   logReq(c, 'admin', 'totp_disable', true, { detail: '关闭了两步验证' })
   return c.json({ ok: true })
 })
@@ -208,6 +221,7 @@ api.delete('/auth/passkey/:id', (c) => {
   if (!pk) return c.json(bad('不存在'), 404)
   db.data.auth.passkeys = passkeys().filter((p) => p.id !== id)
   db.flush()
+  revokeOtherSessions(c)
   logReq(c, 'admin', 'passkey_remove', true, { detail: `删除通行密钥：${pk.name}` })
   return c.json({ ok: true })
 })
@@ -613,7 +627,7 @@ function validateTemplate(t: RuleTemplate): string | null {
     return /custom_proxy_group\s*=/.test(t.content) ? null : '没有找到 custom_proxy_group，不是有效的 ini 模板'
   }
   try {
-    const y = YAML.parse(t.content, { maxAliasCount: -1 })
+    const y = YAML.parse(t.content, { maxAliasCount: YAML_MAX_ALIAS })
     if (!y || typeof y !== 'object') return 'YAML 内容为空'
     if (!Array.isArray(y['proxy-groups']) && !Array.isArray(y.rules)) return '模板中没有 proxy-groups 或 rules'
     return null
@@ -869,7 +883,7 @@ api.put('/settings', async (c) => {
   const b = await c.req.json()
   const s = db.data.settings
   if (b.logRetentionDays !== undefined) s.logRetentionDays = Math.min(3650, Math.max(1, Number(b.logRetentionDays) || 90))
-  for (const k of ['publicUrl', 'ruleMirror', 'ruleMirrorCustom', 'ruleDownloadViaProxy', 'testUrl', 'corePath'] as const) {
+  for (const k of ['publicUrl', 'ruleMirror', 'ruleMirrorCustom', 'ruleDownloadViaProxy', 'testUrl'] as const) {
     if (b[k] !== undefined) (s as any)[k] = b[k]
   }
   s.publicUrl = s.publicUrl.trim().replace(/\/+$/, '')

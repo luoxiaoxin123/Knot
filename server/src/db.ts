@@ -27,7 +27,6 @@ export function defaultSettings(): Settings {
       intervalHours: 24,
       keep: 14,
     },
-    corePath: '',
     logRetentionDays: 90,
   }
 }
@@ -71,6 +70,8 @@ export function migrate(d: DbData) {
     p.accessControl = { ...defaultAccess(), ...p.accessControl }
   }
   d.shares ??= []
+  // 内核路径改为只能用 MIHOMO_PATH 环境变量指定，旧数据和备份里的值不再使用
+  delete (d.settings as any).corePath
   for (const s of d.shares) s.accessControl = { ...defaultAccess(), ...s.accessControl }
 }
 

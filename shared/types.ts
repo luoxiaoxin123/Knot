@@ -306,8 +306,6 @@ export interface Settings {
   ruleDownloadViaProxy: boolean
   testUrl: string
   s3: S3Config
-  /** mihomo 内核路径（真实测速 / 解锁检测），留空自动查找 */
-  corePath: string
   /** 日志保留天数 */
   logRetentionDays: number
 }
@@ -330,6 +328,14 @@ export interface AuthData {
   secret: string
   totp?: { secret: string; enabled: boolean; lastStep?: number; recoveryHashes: string[] }
   passkeys?: Passkey[]
+  /** 已登录的会话；退出登录、修改密码或安全设置时从这里移除 */
+  sessions?: Session[]
+}
+
+export interface Session {
+  id: string
+  exp: number
+  createdAt: number
 }
 
 export interface DbData {
