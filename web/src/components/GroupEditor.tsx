@@ -356,7 +356,7 @@ export function GroupEditor({
             <aside className="flex w-full shrink-0 flex-col gap-3 lg:min-h-0 lg:w-72">
               <div className="grid shrink-0 grid-cols-2 gap-2">
                 <Button onClick={addGroup}><Plus className="size-4" />添加分组</Button>
-                <Button variant="primary" onClick={apply} loading={saving}>应用并保存</Button>
+                <Button variant="primary" onClick={apply} loading={saving}>应用</Button>
               </div>
               <Button className="w-full shrink-0" onClick={() => setHideAdded(!hideAdded)}>
                 {hideAdded ? <Eye className="size-4" /> : <EyeOff className="size-4" />}

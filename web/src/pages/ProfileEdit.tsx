@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Eye, Search, LayoutGrid, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Eye, Search, LayoutGrid, RotateCcw, Save } from 'lucide-react'
 import type { Profile } from '@shared/types'
 import { api } from '../lib/api'
 import { useNodes, useProfiles, useRulesMeta, useSubs, useTemplates } from '../lib/hooks'
@@ -21,6 +21,7 @@ import {
   Spinner,
   ToggleRow,
   cx,
+  useConfirm,
   useToast,
 } from '../components/ui'
 import { CodeEditor } from '../components/CodeEditor'
@@ -49,8 +50,10 @@ export default function ProfileEditPage() {
 }
 
 function Editor({ initial }: { initial: Profile }) {
+  // 修改只保存在本页，点「保存」才写入服务器；直接离开会丢弃
   const [f, setF] = useState<Profile>(initial)
-  const [dirty, setDirty] = useState(false)
+  const [saved, setSaved] = useState<Profile>(initial)
+  const dirty = useMemo(() => JSON.stringify(f) !== JSON.stringify(saved), [f, saved])
   const [saving, setSaving] = useState(false)
   const [preview, setPreview] = useState(false)
   const { data: nodes } = useNodes()
@@ -59,10 +62,9 @@ function Editor({ initial }: { initial: Profile }) {
   const { data: meta } = useRulesMeta()
   const qc = useQueryClient()
   const toast = useToast()
-  const set = <K extends keyof Profile>(k: K, v: Profile[K]) => {
-    setF((x) => ({ ...x, [k]: v }))
-    setDirty(true)
-  }
+  const confirm = useConfirm()
+  const navigate = useNavigate()
+  const set = <K extends keyof Profile>(k: K, v: Profile[K]) => setF((x) => ({ ...x, [k]: v }))
 
   useEffect(() => {
     const fn = (e: BeforeUnloadEvent) => {
@@ -71,6 +73,22 @@ function Editor({ initial }: { initial: Profile }) {
     window.addEventListener('beforeunload', fn)
     return () => window.removeEventListener('beforeunload', fn)
   }, [dirty])
+
+  // 有未保存的修改时，点击站内链接（返回、侧边栏）先确认
+  useEffect(() => {
+    if (!dirty) return
+    const fn = async (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+      const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+      if (!a || a.target === '_blank' || a.origin !== window.location.origin || a.pathname === window.location.pathname) return
+      e.preventDefault()
+      e.stopPropagation()
+      const ok = await confirm({ title: '放弃未保存的修改？', body: '离开后，本页的修改不会保存。', danger: true, okText: '放弃修改' })
+      if (ok) navigate(a.pathname + a.search + a.hash)
+    }
+    document.addEventListener('click', fn, true)
+    return () => document.removeEventListener('click', fn, true)
+  }, [dirty, confirm, navigate])
 
   const selected = useMemo(() => selectNodes(f, nodes || [], subs || []), [f, nodes, subs])
 
@@ -88,18 +106,16 @@ function Editor({ initial }: { initial: Profile }) {
     }
   }
 
-  const save = async (next: Profile = f) => {
+  const save = async () => {
     setSaving(true)
     try {
-      const p = await api.put<Profile>(`/profiles/${next.id}`, next)
+      const p = await api.put<Profile>(`/profiles/${f.id}`, f)
       setF(p)
+      setSaved(p)
       qc.setQueryData<Profile[]>(['profiles'], (old) => old?.map((x) => (x.id === p.id ? p : x)))
-      setDirty(false)
       toast('已保存')
-      return true
     } catch (e: any) {
       toast(e.message, 'error')
-      return false
     } finally {
       setSaving(false)
     }
@@ -112,13 +128,18 @@ function Editor({ initial }: { initial: Profile }) {
   ]
 
   return (
-    <div className="pb-20">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+    <div className="pb-10">
+      <div className="sticky top-12 z-20 -mx-4 -mt-6 mb-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-zinc-200 bg-zinc-50/95 px-4 py-3 backdrop-blur md:top-0 md:-mx-8 md:px-8 dark:border-zinc-800 dark:bg-zinc-950/95">
+        <div className="flex min-w-0 items-center gap-2">
           <Link to="/profiles" className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"><ArrowLeft className="size-4" /></Link>
-          <h1 className="text-xl font-semibold tracking-tight">{f.name || '未命名'}</h1>
+          <h1 className="truncate text-xl font-semibold tracking-tight">{f.name || '未命名'}</h1>
+          {dirty && <Badge color="amber">未保存</Badge>}
         </div>
-        <Button onClick={() => setPreview(true)}><Eye className="size-4" />预览配置</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => setPreview(true)}><Eye className="size-4" />预览配置</Button>
+          {dirty && <Button onClick={() => setF(saved)}><RotateCcw className="size-4" />还原</Button>}
+          <Button variant="primary" onClick={() => save()} loading={saving} disabled={!dirty}><Save className="size-4" />保存</Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -296,14 +317,6 @@ function Editor({ initial }: { initial: Profile }) {
         </div>
       </div>
 
-      <div className={cx('fixed inset-x-0 bottom-0 z-20 border-t border-zinc-200 bg-white/95 backdrop-blur transition-transform md:left-52 dark:border-zinc-800 dark:bg-zinc-900/95', dirty ? 'translate-y-0' : 'pointer-events-none invisible translate-y-full')}>
-        <div className="mx-auto flex max-w-6xl items-center justify-end gap-2 px-4 py-3 md:px-8">
-          <span className="mr-auto text-sm text-zinc-500">有未保存的修改</span>
-          <Button onClick={() => { setF(initial); setDirty(false) }}>还原</Button>
-          <Button variant="primary" onClick={() => save()} loading={saving}>保存</Button>
-        </div>
-      </div>
-
       {preview && <PreviewModal profile={f} onClose={() => setPreview(false)} />}
       {groupEditor && (
         <GroupEditor
@@ -311,10 +324,9 @@ function Editor({ initial }: { initial: Profile }) {
           initial={groupEditor.initial}
           nodes={groupEditor.nodes}
           onClose={() => setGroupEditor(null)}
-          onApply={async (groups) => {
-            const next = { ...f, groupMode: 'custom' as const, customGroups: groups, knownNodeIds: groupEditor.nodes.map((n) => n.id) }
-            setF(next)
-            if (await save(next)) setGroupEditor(null)
+          onApply={(groups) => {
+            setF((x) => ({ ...x, groupMode: 'custom', customGroups: groups, knownNodeIds: groupEditor.nodes.map((n) => n.id) }))
+            setGroupEditor(null)
           }}
         />
       )}
