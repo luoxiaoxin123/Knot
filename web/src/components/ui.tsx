@@ -402,12 +402,14 @@ export function Modal({
   open: boolean
   onClose: () => void
   title: ReactNode
-  children: ReactNode
+  children?: ReactNode
   footer?: ReactNode
   width?: string
   panelClass?: string
   bodyClass?: string
 }) {
+  // 没有正文时（如只有标题的确认框）不渲染正文区，避免标题与按钮之间出现一块空白
+  const hasBody = children != null && children !== false && children !== ''
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -436,8 +438,10 @@ export function Modal({
             <X className="size-4" />
           </IconButton>
         </div>
-        <div className={cx('min-h-0 flex-1 overflow-y-auto px-4 py-4', bodyClass)}>{children}</div>
-        {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">{footer}</div>}
+        {hasBody && <div className={cx('min-h-0 flex-1 overflow-y-auto px-4 py-4', bodyClass)}>{children}</div>}
+        {footer && (
+          <div className={cx('flex flex-wrap justify-end gap-2 px-4 py-3', hasBody && 'border-t border-zinc-200 dark:border-zinc-800')}>{footer}</div>
+        )}
       </div>
     </div>,
     document.body,
@@ -517,7 +521,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
           </>
         }
       >
-        <div className="text-sm text-zinc-600 dark:text-zinc-400">{confirmState?.body}</div>
+        {confirmState?.body ? <div className="text-sm text-zinc-600 dark:text-zinc-400">{confirmState.body}</div> : null}
       </Modal>
     </FeedbackCtx.Provider>
   )
