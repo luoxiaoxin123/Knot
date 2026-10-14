@@ -398,6 +398,7 @@ export function Modal({
   width = 'max-w-lg',
   panelClass,
   bodyClass,
+  wrapTitle,
 }: {
   open: boolean
   onClose: () => void
@@ -407,6 +408,8 @@ export function Modal({
   width?: string
   panelClass?: string
   bodyClass?: string
+  /** 标题自动换行显示完整内容，而不是单行截断 */
+  wrapTitle?: boolean
 }) {
   // 没有正文时（如只有标题的确认框）不渲染正文区，避免标题与按钮之间出现一块空白
   const hasBody = children != null && children !== false && children !== ''
@@ -432,9 +435,9 @@ export function Modal({
           panelClass,
         )}
       >
-        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-          <h2 className="truncate text-sm font-semibold">{title}</h2>
-          <IconButton title="关闭" onClick={onClose}>
+        <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+          <h2 className={cx('min-w-0 text-sm font-semibold', wrapTitle ? 'break-all' : 'truncate')}>{title}</h2>
+          <IconButton title="关闭" onClick={onClose} className="shrink-0">
             <X className="size-4" />
           </IconButton>
         </div>
@@ -512,6 +515,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
         onClose={() => close(false)}
         title={confirmState?.title}
         width="max-w-sm"
+        wrapTitle
         footer={
           <>
             <Button onClick={() => close(false)}>取消</Button>

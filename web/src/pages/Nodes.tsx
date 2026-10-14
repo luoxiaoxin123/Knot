@@ -483,6 +483,7 @@ function NodeRow({
   const target = chain ? byId.get(chain.targetId) : undefined
   const relay = chain ? byId.get(chain.relayId) : undefined
   const broken = chain && (!target || !relay)
+  const [expanded, setExpanded] = useState(false)
   const p = target?.proxy || n.proxy
   const tr = transportOf(target || n)
   const latency =
@@ -496,8 +497,14 @@ function NodeRow({
             <FlagButton own={n.flag} inherited={target?.flag} onClick={onFlag} />
             <TypeBadge type={p.type} />
           </span>
-          {/* 名称最多两行，过长再省略；完整名称见悬停提示 */}
-          <span className="line-clamp-2 min-w-0 font-medium break-all" title={n.name}>{n.name}</span>
+          {/* 名称最多两行，过长再省略；点击展开/收起完整名称（手机上没有悬停提示） */}
+          <span
+            className={cx('min-w-0 cursor-pointer font-medium break-all', !expanded && 'line-clamp-2')}
+            title={n.name}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {n.name}
+          </span>
           {broken && <Badge color="red" className="shrink-0">失效</Badge>}
         </div>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-zinc-500">
