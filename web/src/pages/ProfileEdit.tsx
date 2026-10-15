@@ -193,7 +193,7 @@ function Editor({ initial }: { initial: Profile }) {
               <ToggleRow label="地区分组" hint="自动生成 香港 / 台湾 / 日本 / 新加坡 / 美国 / 韩国 自动测速分组（只生成有节点的地区；链式节点按落地地区归类）" checked={f.regionGroups} onChange={(v) => set('regionGroups', v)} />
               <ToggleRow label="分流组内列出全部节点" hint="可以给每个服务单独指定节点；节点很多时可关闭以精简配置" checked={f.groupsIncludeNodes} onChange={(v) => set('groupsIncludeNodes', v)} />
               <ToggleRow label="节点名加旗帜" hint="使用在「节点」页手动设置的旗帜；没设置的节点保持原名" checked={f.addFlags} onChange={(v) => set('addFlags', v)} />
-              <ToggleRow label="下发流量信息" hint="汇总所选外部订阅的已用流量 / 总量 / 到期时间，客户端可直接显示" checked={f.trafficInfo} onChange={(v) => set('trafficInfo', v)} />
+              <ToggleRow label="下发流量信息" hint="汇总所选外部订阅的已用流量 / 总量，客户端可直接显示；到期时间取本链接的有效期" checked={f.trafficInfo} onChange={(v) => set('trafficInfo', v)} />
             </div>
           </Card>
 

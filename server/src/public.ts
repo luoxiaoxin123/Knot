@@ -78,12 +78,13 @@ function respond(c: Context, p: Profile, target: OutputTarget, trafficInfo: bool
     if (subs.length) {
       const sum = (k: 'upload' | 'download' | 'total') => subs.reduce((a, s) => a + (s.traffic![k] || 0), 0)
       parts.push(`upload=${sum('upload')}`, `download=${sum('download')}`, `total=${sum('total')}`)
-      const expires = subs.map((s) => s.traffic!.expire).filter((x): x is number => !!x)
-      if (ac.expiresAt) expires.push(Math.floor(ac.expiresAt / 1000))
-      if (expires.length) parts.push(`expire=${Math.min(...expires)}`)
     }
   }
-  if (!parts.length && ac.expiresAt) parts.push('upload=0', 'download=0', 'total=0', `expire=${Math.floor(ac.expiresAt / 1000)}`)
+  // 到期时间只取本链接的有效期，不透传外部订阅的到期日
+  if (ac.expiresAt) {
+    if (!parts.length) parts.push('upload=0', 'download=0', 'total=0')
+    parts.push(`expire=${Math.floor(ac.expiresAt / 1000)}`)
+  }
   if (parts.length) c.header('Subscription-Userinfo', parts.join('; '))
   return c.body(r.text)
 }

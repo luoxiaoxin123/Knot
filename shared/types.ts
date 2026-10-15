@@ -249,7 +249,7 @@ export interface Profile {
   groupsIncludeNodes: boolean
   /** 节点名前加上节点页手动设置的旗帜 */
   addFlags: boolean
-  /** 下发 subscription-userinfo：汇总所选外部订阅的流量信息 */
+  /** 下发 subscription-userinfo：汇总所选外部订阅的流量信息（到期时间取链接有效期） */
   trafficInfo: boolean
   /** 合并进生成配置的 YAML（dns / tun / 端口等） */
   overrideYaml: string
