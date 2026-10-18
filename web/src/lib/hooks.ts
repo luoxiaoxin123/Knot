@@ -12,7 +12,7 @@ export interface RulesMeta {
   templatePresets: { name: string; kind: 'ini' | 'clash'; url: string }[]
 }
 
-export type SettingsView = Settings & { s3: Settings['s3'] & { hasSecret: boolean } }
+export type SettingsView = Settings & { s3: Settings['s3'] & { hasAccessKey: boolean; hasSecret: boolean } }
 
 export const useNodes = () => useQuery({ queryKey: ['nodes'], queryFn: () => api.get<NodeView[]>('/nodes') })
 export const useSubs = () => useQuery({ queryKey: ['subs'], queryFn: () => api.get<Subscription[]>('/subs') })

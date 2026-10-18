@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, Upload, CloudUpload, RotateCcw } from 'lucide-react'
+import { Download, Upload, CloudUpload, RotateCcw, RefreshCw, Check } from 'lucide-react'
 import { api, fmtBytes, fmtDate } from '../lib/api'
 import { useSettings, type SettingsView } from '../lib/hooks'
 import { SecurityCard } from '../components/Security'
@@ -145,14 +145,14 @@ function S3Card({ f, setS3, save }: { f: SettingsView; setS3: (k: string, v: any
           <Field label="Region" hint="R2 填 auto">
             <Input value={s3.region} onChange={(e) => setS3('region', e.target.value)} />
           </Field>
-          <Field label="Bucket">
-            <Input value={s3.bucket} onChange={(e) => setS3('bucket', e.target.value)} />
+          <Field label="Bucket" hint="可手动输入，或填好 Endpoint 与密钥后点「获取」">
+            <BucketPicker s3={s3} onChange={(v) => setS3('bucket', v)} />
           </Field>
           <Field label="路径前缀">
             <Input value={s3.prefix} onChange={(e) => setS3('prefix', e.target.value)} placeholder="knot/" />
           </Field>
-          <Field label="Access Key ID">
-            <Input value={s3.accessKeyId} onChange={(e) => setS3('accessKeyId', e.target.value)} autoComplete="off" />
+          <Field label="Access Key ID" hint={s3.hasAccessKey ? '已保存，留空不修改' : undefined}>
+            <Input value={s3.accessKeyId} onChange={(e) => setS3('accessKeyId', e.target.value)} autoComplete="off" placeholder={s3.hasAccessKey ? '••••••••' : ''} />
           </Field>
           <Field label="Secret Access Key" hint={s3.hasSecret ? '已保存，留空不修改' : undefined}>
             <Input type="password" value={s3.secretAccessKey} onChange={(e) => setS3('secretAccessKey', e.target.value)} autoComplete="new-password" placeholder={s3.hasSecret ? '••••••••' : ''} />
@@ -201,6 +201,76 @@ function S3Card({ f, setS3, save }: { f: SettingsView; setS3: (k: string, v: any
         )}
       </div>
     </Card>
+  )
+}
+
+function BucketPicker({ s3, onChange }: { s3: SettingsView['s3']; onChange: (v: string) => void }) {
+  const toast = useToast()
+  const [buckets, setBuckets] = useState<string[] | null>(null)
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const fetchBuckets = async () => {
+    setLoading(true)
+    try {
+      const { endpoint, region, pathStyle, accessKeyId, secretAccessKey } = s3
+      const r = await api.post<string[]>('/backup/s3/buckets', { endpoint, region, pathStyle, accessKeyId, secretAccessKey })
+      setBuckets(r)
+      setOpen(true)
+      if (!r.length) toast('该账号下没有 bucket', 'error')
+    } catch (e: any) {
+      toast(e.message, 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div ref={box} className="relative flex gap-2">
+      <Input
+        value={s3.bucket}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => buckets?.length && setOpen(true)}
+        autoComplete="off"
+        className="min-w-0 flex-1"
+      />
+      <Button onClick={fetchBuckets} loading={loading} title="用当前凭据列出可访问的 bucket">
+        {!loading && <RefreshCw className="size-4" />}
+        获取
+      </Button>
+      {open && !!buckets?.length && (
+        <ul className="absolute top-full left-0 z-20 mt-1 max-h-60 w-full overflow-auto rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+          {buckets.map((b) => (
+            <li key={b}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(b)
+                  setOpen(false)
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <span className="min-w-0 flex-1 truncate">{b}</span>
+                {b === s3.bucket && <Check className="size-3.5 text-blue-600" />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

@@ -48,7 +48,7 @@ import { checkNodes, coreVersion, findCore } from './services/core.ts'
 import { DEFAULT_EXCLUDE, DEFAULT_SUB_UA, refreshSubscription, refreshTemplate } from './services/subscription.ts'
 import { testNodes } from './services/latency.ts'
 import { backupToS3, exportBackup, importBackup, listS3Backups, restoreFromS3 } from './services/backup.ts'
-import { s3List } from './services/s3.ts'
+import { s3List, s3ListBuckets } from './services/s3.ts'
 
 export const api = new Hono()
 
@@ -884,7 +884,10 @@ api.post('/profiles/preview', async (c) => {
 
 function settingsView() {
   const s = db.data.settings
-  return { ...s, s3: { ...s.s3, secretAccessKey: '', hasSecret: !!s.s3.secretAccessKey } }
+  return {
+    ...s,
+    s3: { ...s.s3, accessKeyId: '', secretAccessKey: '', hasAccessKey: !!s.s3.accessKeyId, hasSecret: !!s.s3.secretAccessKey },
+  }
 }
 
 api.get('/settings', (c) => c.json(settingsView()))
@@ -898,8 +901,9 @@ api.put('/settings', async (c) => {
   }
   s.publicUrl = s.publicUrl.trim().replace(/\/+$/, '')
   if (b.s3) {
-    const { secretAccessKey, hasSecret: _h, lastBackupAt: _l, lastError: _e, ...rest } = b.s3
+    const { accessKeyId, secretAccessKey, hasAccessKey: _a, hasSecret: _h, lastBackupAt: _l, lastError: _e, ...rest } = b.s3
     Object.assign(s.s3, rest)
+    if (accessKeyId) s.s3.accessKeyId = String(accessKeyId).trim()
     if (secretAccessKey) s.s3.secretAccessKey = secretAccessKey
     s.s3.keep = Math.max(0, Number(s.s3.keep) || 0)
     s.s3.intervalHours = Math.max(0, Number(s.s3.intervalHours) || 0)
@@ -930,6 +934,26 @@ api.post('/backup/s3/test', async (c) => {
     const cfg = db.data.settings.s3
     await s3List(cfg, cfg.prefix || '')
     return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json(bad(e.message), 400)
+  }
+})
+
+// 用表单里尚未保存的连接参数列出 bucket；凭据留空时沿用已保存的
+api.post('/backup/s3/buckets', async (c) => {
+  const b = await c.req.json().catch(() => ({}))
+  const saved = db.data.settings.s3
+  const cfg = {
+    ...saved,
+    endpoint: String(b.endpoint ?? saved.endpoint),
+    region: String(b.region ?? saved.region),
+    pathStyle: !!(b.pathStyle ?? saved.pathStyle),
+    accessKeyId: String(b.accessKeyId || '').trim() || saved.accessKeyId,
+    secretAccessKey: String(b.secretAccessKey || '') || saved.secretAccessKey,
+  }
+  if (!cfg.endpoint.trim() || !cfg.accessKeyId || !cfg.secretAccessKey) return c.json(bad('请先填写 Endpoint、Access Key ID 与 Secret Access Key'), 400)
+  try {
+    return c.json(await s3ListBuckets(cfg))
   } catch (e: any) {
     return c.json(bad(e.message), 400)
   }

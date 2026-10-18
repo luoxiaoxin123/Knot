@@ -16,7 +16,10 @@ function endpointUrl(cfg: S3Config, key = '', query = ''): URL {
   let ep = cfg.endpoint.trim().replace(/\/+$/, '')
   if (!/^https?:\/\//.test(ep)) ep = 'https://' + ep
   const u = new URL(ep)
-  if (cfg.pathStyle) {
+  if (!cfg.bucket) {
+    // 不带 bucket：服务级请求（ListBuckets）
+    u.pathname = '/'
+  } else if (cfg.pathStyle) {
     u.pathname = `/${cfg.bucket}/${encodeKey(key)}`.replace(/\/$/, key ? '' : '/')
   } else {
     u.hostname = `${cfg.bucket}.${u.hostname}`
@@ -113,4 +116,10 @@ export async function s3List(cfg: S3Config, prefix: string): Promise<S3Object[]>
     token = /<IsTruncated>true<\/IsTruncated>/.test(xml) ? xml.match(/<NextContinuationToken>(.*?)<\/NextContinuationToken>/)?.[1] : undefined
   } while (token)
   return out
+}
+
+/** 列出当前凭据可访问的全部 bucket（ListBuckets） */
+export async function s3ListBuckets(cfg: S3Config): Promise<string[]> {
+  const xml = await request({ ...cfg, bucket: '' }, 'GET', '')
+  return [...xml.matchAll(/<Bucket>[\s\S]*?<Name>([\s\S]*?)<\/Name>[\s\S]*?<\/Bucket>/g)].map((m) => m[1].replace(/&amp;/g, '&'))
 }
