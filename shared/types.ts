@@ -41,6 +41,8 @@ export interface Node {
   createdAt: number
   /** 自建节点的分组，缺省为 default */
   group?: string
+  /** 导入时的原始分享链接（节点配置未被改动时保留，用于原样展示 / 复制） */
+  raw?: string
   /** 手动设置的旗帜（ISO 3166 两位代码，如 JP）。输出时加在节点名前，地区分组也以它为准 */
   flag?: string
   /** 最近一次测速结果（ms），-1 表示失败 */

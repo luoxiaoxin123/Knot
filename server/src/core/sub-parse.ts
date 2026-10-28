@@ -20,6 +20,12 @@ function normalizeProxy(v: any): Proxy {
   return p
 }
 
+/** 从分享链接解析出的节点 → 原始链接（不写进 Proxy，避免混入输出配置） */
+const rawLinks = new WeakMap<Proxy, string>()
+export function rawOf(p: Proxy): string | undefined {
+  return rawLinks.get(p)
+}
+
 function parseLines(text: string): { proxies: Proxy[]; errors: string[] } {
   const proxies: Proxy[] = []
   const errors: string[] = []
@@ -28,7 +34,9 @@ function parseLines(text: string): { proxies: Proxy[]; errors: string[] } {
     if (!line || line.startsWith('#') || line.startsWith('//')) continue
     if (!isProxyUri(line)) continue
     try {
-      proxies.push(parseUri(line))
+      const p = parseUri(line)
+      rawLinks.set(p, line)
+      proxies.push(p)
     } catch (e: any) {
       errors.push(`${line.slice(0, 40)}…: ${e.message}`)
     }

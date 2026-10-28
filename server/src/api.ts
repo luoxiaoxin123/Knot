@@ -3,7 +3,7 @@ import YAML from 'yaml'
 import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { AccessControl, CustomGroup, CustomRule, Node, Profile, RuleTemplate, Share, Subscription } from '../../shared/types.ts'
+import type { AccessControl, CustomGroup, CustomRule, Node, Profile, Proxy, RuleTemplate, Share, Subscription } from '../../shared/types.ts'
 import { RULE_TYPES } from '../../shared/types.ts'
 import { parseRuleLines } from '../../shared/rules-yaml.ts'
 import { db, defaultAccess, newProfile } from './db.ts'
@@ -38,8 +38,8 @@ import {
   startTotpSetup,
   totpEnabled,
 } from './twofa.ts'
-import { parseSubscription } from './core/sub-parse.ts'
-import { toUri } from './core/uri-emit.ts'
+import { parseSubscription, rawOf } from './core/sub-parse.ts'
+import { renameUri, toUri } from './core/uri-emit.ts'
 import { parseUri } from './core/uri-parse.ts'
 import { CLASH_YAML, uid } from './core/util.ts'
 import { MODULES, MODULE_PRESETS } from './core/rules/modules.ts'
@@ -245,7 +245,7 @@ api.get('/version/check', async (c) => c.json(await checkUpdate(VERSION, c.req.q
 // ------------------------------- 节点 -------------------------------
 
 function nodeView(n: Node) {
-  return { ...n, uri: toUri({ ...n.proxy, name: n.name }) }
+  return { ...n, uri: n.raw || toUri({ ...n.proxy, name: n.name }) }
 }
 
 api.get('/nodes', (c) => c.json(db.data.nodes.map(nodeView)))
@@ -259,6 +259,7 @@ api.post('/nodes/import', async (c) => {
     id: uid(),
     name: p.name,
     proxy: p,
+    ...(rawOf(p) ? { raw: rawOf(p) } : {}),
     source: { kind: 'manual' },
     ...(g !== DEFAULT_GROUP ? { group: g } : {}),
     enabled: true,
@@ -282,26 +283,48 @@ api.put('/nodes/:id', async (c) => {
   const n = db.data.nodes.find((x) => x.id === c.req.param('id'))
   if (!n) return c.json(bad('节点不存在'), 404)
   const body = await c.req.json()
-  if (typeof body.name === 'string' && body.name.trim()) n.name = body.name.trim()
-  if (typeof body.enabled === 'boolean') n.enabled = body.enabled
-  if (Array.isArray(body.tags)) n.tags = body.tags.map(String)
-  if (body.flag !== undefined) setFlag(n, body.flag)
-  if (body.group !== undefined && n.source.kind === 'manual') setGroup(n, body.group)
-  if (body.proxyYaml !== undefined && n.source.kind !== 'chain') {
+  // 先解析节点配置（YAML 或分享链接），出错时不改动任何字段
+  let proxy: Proxy | undefined
+  let raw: string | undefined
+  if (body.proxyUri !== undefined && n.source.kind === 'manual') {
+    try {
+      raw = String(body.proxyUri).trim()
+      proxy = parseUri(raw)
+    } catch (e: any) {
+      return c.json(bad(`分享链接解析失败：${e.message}`), 400)
+    }
+  } else if (body.proxyYaml !== undefined && n.source.kind !== 'chain') {
     try {
       const p = YAML.parse(String(body.proxyYaml))
       if (!p || typeof p !== 'object' || !p.type || !p.server || !p.port) throw new Error('缺少 type / server / port')
-      n.proxy = { ...p, name: p.name || n.name, port: Number(p.port) }
+      proxy = { ...p, port: Number(p.port) }
     } catch (e: any) {
       return c.json(bad(`节点配置错误：${e.message}`), 400)
     }
   }
-  if (body.proxyUri !== undefined && n.source.kind === 'manual') {
-    try {
-      n.proxy = { ...parseUri(String(body.proxyUri).trim()), name: n.name }
-    } catch (e: any) {
-      return c.json(bad(`分享链接解析失败：${e.message}`), 400)
-    }
+  // 名称：「名称」输入框改了以它为准；否则配置里（YAML 的 name / 链接 # 后）改了名就用配置里的
+  const oldName = n.name
+  const inputName = typeof body.name === 'string' ? body.name.trim() : ''
+  const configName = String(proxy?.name ?? '').trim()
+  if (inputName && inputName !== oldName) n.name = inputName
+  else if (configName && configName !== oldName) n.name = configName
+  if (typeof body.enabled === 'boolean') n.enabled = body.enabled
+  if (Array.isArray(body.tags)) n.tags = body.tags.map(String)
+  if (body.flag !== undefined) setFlag(n, body.flag)
+  if (body.group !== undefined && n.source.kind === 'manual') setGroup(n, body.group)
+  if (proxy) {
+    const { name: _a, ...next } = proxy
+    const { name: _b, ...prev } = n.proxy
+    // 用分享链接编辑：保存编辑后的链接；用 YAML 改了配置：原始链接已不对应，丢弃
+    if (raw !== undefined) n.raw = raw
+    else if (JSON.stringify(next) !== JSON.stringify(prev)) delete n.raw
+    n.proxy = { ...proxy, name: n.name }
+  }
+  // 原始链接里的名称与节点名称保持一致
+  if (n.raw && n.source.kind === 'manual' && parseNameOf(n.raw) !== n.name) {
+    const renamed = renameUri(n.raw, n.name)
+    if (renamed) n.raw = renamed
+    else delete n.raw
   }
   if (n.source.kind === 'chain' && (body.relayId || body.targetId)) {
     const err = validateChain(body.targetId ?? n.source.targetId, body.relayId ?? n.source.relayId, n.id)
@@ -311,6 +334,14 @@ api.put('/nodes/:id', async (c) => {
   db.save()
   return c.json(nodeView(n))
 })
+
+function parseNameOf(uri: string) {
+  try {
+    return parseUri(uri).name
+  } catch {
+    return null
+  }
+}
 
 const DEFAULT_GROUP = 'default'
 function groupName(v: unknown) {

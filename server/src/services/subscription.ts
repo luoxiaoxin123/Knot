@@ -1,6 +1,6 @@
 import type { Node, Proxy, Subscription } from '../../../shared/types.ts'
 import { db } from '../db.ts'
-import { parseSubscription, parseUserinfo } from '../core/sub-parse.ts'
+import { parseSubscription, parseUserinfo, rawOf } from '../core/sub-parse.ts'
 import YAML from 'yaml'
 import { CLASH_YAML, safeRegex, uid } from '../core/util.ts'
 
@@ -59,6 +59,7 @@ export function mergeSubNodes(sub: Subscription, proxies: Proxy[]) {
       id: match?.id || uid(),
       name: sub.namePrefix + p.name,
       proxy: p,
+      ...(rawOf(p) ? { raw: rawOf(p) } : {}),
       source: { kind: 'sub', subId: sub.id },
       enabled: match?.enabled ?? true,
       tags: match?.tags ?? [],

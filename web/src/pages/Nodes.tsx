@@ -714,7 +714,12 @@ function EditModal({ node, nodes, onClose, onDone }: { node: NodeView; nodes: No
             {format === 'uri' ? (
               <Field
                 label="节点配置（分享链接）"
-                hint={isSub ? '订阅节点的配置由订阅源决定，会在更新时覆盖，这里只读。' : '修改链接后保存，将按链接重新解析节点配置（名称以上方为准）；保存时以当前显示的格式为准。'}
+                hint={
+                  <>
+                    {node.raw ? '这是导入时的原始链接。' : '导入时不是分享链接（或已用 YAML 修改过配置），这里是按当前配置生成的链接。'}
+                    {isSub ? '订阅节点的配置由订阅源决定，会在更新时覆盖，这里只读。' : '修改后保存会按链接重新解析节点配置，# 后的名称也会生效；保存时以当前显示的格式为准。'}
+                  </>
+                }
               >
                 <Textarea value={uri} onChange={(e) => setUri(e.target.value)} readOnly={isSub} rows={6} className="break-all font-mono text-xs" />
               </Field>

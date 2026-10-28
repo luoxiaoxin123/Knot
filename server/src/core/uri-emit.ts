@@ -1,5 +1,6 @@
 import type { Proxy } from '../../../shared/types.ts'
-import { b64encode, b64urlEncode } from './util.ts'
+import { b64decode, b64encode, b64urlEncode } from './util.ts'
+import { parseUri } from './uri-parse.ts'
 
 function hostPort(p: Proxy): string {
   const h = p.server.includes(':') && !p.server.startsWith('[') ? `[${p.server}]` : p.server
@@ -263,6 +264,26 @@ export function toUri(p: Proxy): string | null {
   if (!fn) return null
   try {
     return fn(p)
+  } catch {
+    return null
+  }
+}
+
+/** 只改分享链接里的节点名称，其余部分保持原样；无法安全改名时返回 null */
+export function renameUri(uri: string, name: string): string | null {
+  try {
+    const scheme = uri.slice(0, uri.indexOf('://')).toLowerCase()
+    let out: string
+    if (scheme === 'ssr') return null
+    if (scheme === 'vmess' && !uri.includes('@')) {
+      const body = uri.slice('vmess://'.length).split('#')[0]
+      const j = JSON.parse(b64decode(body))
+      out = 'vmess://' + b64encode(JSON.stringify({ ...j, ps: name }))
+    } else {
+      const i = uri.indexOf('#')
+      out = (i >= 0 ? uri.slice(0, i) : uri) + '#' + encodeURIComponent(name)
+    }
+    return parseUri(out).name === name ? out : null
   } catch {
     return null
   }
