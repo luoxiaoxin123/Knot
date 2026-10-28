@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Server, Rss, ListTree, Share2, Send, ScrollText, History, Settings as SettingsIcon, LogOut, Menu, X, KeyRound } from 'lucide-react'
+import { Server, Rss, ListTree, Share2, Send, ScrollText, History, Settings as SettingsIcon, LogOut, Menu, X, KeyRound, ArrowUpCircle } from 'lucide-react'
 import { api } from './lib/api'
 import { Button, Field, Input, Spinner, cx, useToast } from './components/ui'
 import NodesPage from './pages/Nodes'
@@ -30,6 +30,33 @@ function Logo() {
     <div className="flex items-center gap-2">
       <img src="/favicon.svg" className="size-6" alt="" />
       <span className="text-[15px] font-semibold tracking-tight">Knot</span>
+    </div>
+  )
+}
+
+function VersionInfo({ version }: { version: string }) {
+  const { data } = useQuery({
+    queryKey: ['version-check'],
+    queryFn: () => api.get<{ current: string; latest: string | null; url: string | null; hasUpdate: boolean }>('/version/check'),
+    staleTime: 6 * 3600_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  })
+  return (
+    <div className="px-2.5 pb-2 text-[11px] text-zinc-400">
+      版本 {version}
+      {data?.hasUpdate && data.url && (
+        <a
+          href={data.url}
+          target="_blank"
+          rel="noreferrer"
+          title="查看更新说明"
+          className="mt-1 flex items-center gap-1 font-medium text-blue-600 hover:underline dark:text-blue-400"
+        >
+          <ArrowUpCircle className="size-3.5" />
+          新版本 {data.latest} 可用
+        </a>
+      )}
     </div>
   )
 }
@@ -72,7 +99,7 @@ function Shell({ children, version }: { children: ReactNode; version?: string })
         </div>
         {nav}
         <div className="mt-auto">
-          {version && <div className="px-2.5 pb-2 text-[11px] text-zinc-400">版本 {version}</div>}
+          {version && <VersionInfo version={version} />}
           <button onClick={logout} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100">
             <LogOut className="size-4" />
             退出登录
@@ -89,6 +116,7 @@ function Shell({ children, version }: { children: ReactNode; version?: string })
         {open && (
           <div className="sticky top-12 z-20 border-b border-zinc-200 bg-white px-3 py-2 md:hidden dark:border-zinc-800 dark:bg-zinc-900">
             {nav}
+            {version && <div className="mt-2"><VersionInfo version={version} /></div>}
             <button onClick={logout} className="mt-1 flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-zinc-500">
               <LogOut className="size-4" />
               退出登录

@@ -48,6 +48,7 @@ import { genCtx } from './ctx.ts'
 import { checkNodes, coreVersion, findCore } from './services/core.ts'
 import { DEFAULT_EXCLUDE, DEFAULT_SUB_UA, refreshSubscription, refreshTemplate } from './services/subscription.ts'
 import { testNodes } from './services/latency.ts'
+import { checkUpdate } from './services/update.ts'
 import { backupToS3, exportBackup, importBackup, listS3Backups, restoreFromS3 } from './services/backup.ts'
 import { s3List, s3ListBuckets } from './services/s3.ts'
 
@@ -236,6 +237,10 @@ api.delete('/auth/passkey/:id', (c) => {
   logReq(c, 'admin', 'passkey_remove', true, { detail: `删除通行密钥：${pk.name}` })
   return c.json({ ok: true })
 })
+
+// ------------------------------- 版本 -------------------------------
+
+api.get('/version/check', async (c) => c.json(await checkUpdate(VERSION, c.req.query('force') === '1')))
 
 // ------------------------------- 节点 -------------------------------
 
