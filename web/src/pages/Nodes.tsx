@@ -20,6 +20,7 @@ import {
   Menu,
   Modal,
   PageHeader,
+  Segmented,
   Select,
   Spinner,
   Switch,
@@ -649,6 +650,8 @@ function EditModal({ node, nodes, onClose, onDone }: { node: NodeView; nodes: No
   const groupList = useMemo(() => [...new Set(nodes.filter((n) => n.source.kind === 'manual').map(groupOf))], [nodes])
   const { name: _n, ...rest } = node.proxy
   const [yaml, setYaml] = useState(() => YAML.stringify({ name: node.name, ...rest }, { lineWidth: 0 }))
+  const [uri, setUri] = useState(node.uri || '')
+  const [format, setFormat] = useState<'yaml' | 'uri'>('yaml')
   const chain = node.source.kind === 'chain' ? node.source : null
   const [relayId, setRelayId] = useState(chain?.relayId || '')
   const [loading, setLoading] = useState(false)
@@ -658,7 +661,11 @@ function EditModal({ node, nodes, onClose, onDone }: { node: NodeView; nodes: No
     try {
       const body: any = { name, tags: tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean) }
       if (node.source.kind === 'manual') body.group = group
-      if (!chain && !isSub) body.proxyYaml = yaml
+      if (!chain && !isSub) {
+        if (format === 'uri') {
+          if (uri.trim() !== (node.uri || '')) body.proxyUri = uri
+        } else body.proxyYaml = yaml
+      }
       if (chain) body.relayId = relayId
       await api.put(`/nodes/${node.id}`, body)
       onDone()
@@ -697,9 +704,26 @@ function EditModal({ node, nodes, onClose, onDone }: { node: NodeView; nodes: No
             </Select>
           </Field>
         ) : (
-          <Field label="节点配置（mihomo 格式）" hint={isSub ? '订阅节点的配置由订阅源决定，会在更新时覆盖，这里只读。' : '直接编辑 YAML，字段参考 mihomo 文档。'}>
-            <CodeEditor value={yaml} onChange={setYaml} height="300px" readOnly={isSub} />
-          </Field>
+          <div className="space-y-2">
+            {node.uri && (
+              <Segmented size="sm" value={format} onChange={setFormat} options={[
+                { value: 'yaml', label: 'mihomo YAML' },
+                { value: 'uri', label: '分享链接' },
+              ]} />
+            )}
+            {format === 'uri' ? (
+              <Field
+                label="节点配置（分享链接）"
+                hint={isSub ? '订阅节点的配置由订阅源决定，会在更新时覆盖，这里只读。' : '修改链接后保存，将按链接重新解析节点配置（名称以上方为准）；保存时以当前显示的格式为准。'}
+              >
+                <Textarea value={uri} onChange={(e) => setUri(e.target.value)} readOnly={isSub} rows={6} className="break-all font-mono text-xs" />
+              </Field>
+            ) : (
+              <Field label="节点配置（mihomo 格式）" hint={isSub ? '订阅节点的配置由订阅源决定，会在更新时覆盖，这里只读。' : '直接编辑 YAML，字段参考 mihomo 文档。'}>
+                <CodeEditor value={yaml} onChange={setYaml} height="300px" readOnly={isSub} />
+              </Field>
+            )}
+          </div>
         )}
       </div>
     </Modal>

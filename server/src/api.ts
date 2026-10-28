@@ -40,6 +40,7 @@ import {
 } from './twofa.ts'
 import { parseSubscription } from './core/sub-parse.ts'
 import { toUri } from './core/uri-emit.ts'
+import { parseUri } from './core/uri-parse.ts'
 import { CLASH_YAML, uid } from './core/util.ts'
 import { MODULES, MODULE_PRESETS } from './core/rules/modules.ts'
 import { draftCustomGroups, generate, policyOptions, resolveProxies } from './core/generate.ts'
@@ -288,6 +289,13 @@ api.put('/nodes/:id', async (c) => {
       n.proxy = { ...p, name: p.name || n.name, port: Number(p.port) }
     } catch (e: any) {
       return c.json(bad(`节点配置错误：${e.message}`), 400)
+    }
+  }
+  if (body.proxyUri !== undefined && n.source.kind === 'manual') {
+    try {
+      n.proxy = { ...parseUri(String(body.proxyUri).trim()), name: n.name }
+    } catch (e: any) {
+      return c.json(bad(`分享链接解析失败：${e.message}`), 400)
     }
   }
   if (n.source.kind === 'chain' && (body.relayId || body.targetId)) {
